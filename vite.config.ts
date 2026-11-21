@@ -3,8 +3,12 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
+// Deployed to GitHub Pages under /studyflow/ — override with BASE_PATH for other hosts (e.g. root "/").
+const base = process.env.BASE_PATH ?? '/studyflow/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base,
   plugins: [
     react(),
     tailwindcss(),
@@ -19,12 +23,12 @@ export default defineConfig({
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: base,
+        scope: base,
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: `${base}icons/icon-192.png`, sizes: '192x192', type: 'image/png' },
+          { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png' },
+          { src: `${base}icons/icon-maskable-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

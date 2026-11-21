@@ -49,6 +49,6 @@ export async function checkAndShowReminder(): Promise<void> {
   target.setHours(h, m, 0, 0)
   if (Date.now() < target.getTime()) return
 
-  new Notification('StudyFlow', { body: "C'est l'heure de réviser ! 📚", icon: '/icons/icon-192.png' })
+  new Notification('StudyFlow', { body: "C'est l'heure de réviser ! 📚", icon: `${import.meta.env.BASE_URL}icons/icon-192.png` })
   await save({ ...settings, lastShownDay: today })
 }
