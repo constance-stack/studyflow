@@ -105,50 +105,56 @@ export function ExamTaking() {
   async function handleSubmit() {
     if (phase !== 'taking') return
     setPhase('grading')
-    const durationSeconds = Math.round((Date.now() - startedAtRef.current) / 1000)
-    const provider = await getActiveProvider()
+    setError(null)
+    try {
+      const durationSeconds = Math.round((Date.now() - startedAtRef.current) / 1000)
+      const provider = await getActiveProvider()
 
-    const graded: StoredExamAnswer[] = []
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i]
-      if (q.type === 'qcm') {
-        const selected = [...(qcmAnswers[i] ?? [])]
-        const correct = new Set(q.correctIndices)
-        const exact = correct.size === selected.length && selected.every((s) => correct.has(s))
-        const partialCorrectCount = selected.filter((s) => correct.has(s)).length
-        const hasWrong = selected.some((s) => !correct.has(s))
-        const earnedPoints = exact ? q.points : hasWrong ? 0 : Math.round((partialCorrectCount / correct.size) * q.points)
-        graded.push({ question: q, userSelected: selected, userText: null, earnedPoints, feedback: null, graded: true })
-      } else {
-        const userText = openAnswers[i] ?? ''
-        if (provider) {
-          try {
-            const { score, feedback } = await gradeExamOpenQuestion(q.question, q.expectedAnswer, userText, q.points)
-            graded.push({ question: q, userSelected: null, userText, earnedPoints: score, feedback, graded: true })
-          } catch {
+      const graded: StoredExamAnswer[] = []
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i]
+        if (q.type === 'qcm') {
+          const selected = [...(qcmAnswers[i] ?? [])]
+          const correct = new Set(q.correctIndices)
+          const exact = correct.size === selected.length && selected.every((s) => correct.has(s))
+          const partialCorrectCount = selected.filter((s) => correct.has(s)).length
+          const hasWrong = selected.some((s) => !correct.has(s))
+          const earnedPoints = exact ? q.points : hasWrong ? 0 : Math.round((partialCorrectCount / correct.size) * q.points)
+          graded.push({ question: q, userSelected: selected, userText: null, earnedPoints, feedback: null, graded: true })
+        } else {
+          const userText = openAnswers[i] ?? ''
+          if (provider) {
+            try {
+              const { score, feedback } = await gradeExamOpenQuestion(q.question, q.expectedAnswer, userText, q.points)
+              graded.push({ question: q, userSelected: null, userText, earnedPoints: score, feedback, graded: true })
+            } catch {
+              graded.push({ question: q, userSelected: null, userText, earnedPoints: 0, feedback: null, graded: false })
+            }
+          } else {
             graded.push({ question: q, userSelected: null, userText, earnedPoints: 0, feedback: null, graded: false })
           }
-        } else {
-          graded.push({ question: q, userSelected: null, userText, earnedPoints: 0, feedback: null, graded: false })
         }
       }
+
+      const totalScore = graded.reduce((sum, a) => sum + a.earnedPoints, 0)
+      const maxScore = questions.reduce((sum, q) => sum + q.points, 0)
+
+      await createExamAttempt({
+        examId: config!.examId,
+        subjectId: config!.subjectId,
+        title: config!.name,
+        durationSeconds,
+        score: totalScore,
+        maxScore,
+        answers: { config, answers: graded, totalScore, maxScore, durationSeconds },
+      })
+
+      setResult(graded)
+      setPhase('results')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur lors de la correction de l'examen.")
+      setPhase('taking')
     }
-
-    const totalScore = graded.reduce((sum, a) => sum + a.earnedPoints, 0)
-    const maxScore = questions.reduce((sum, q) => sum + q.points, 0)
-
-    await createExamAttempt({
-      examId: config!.examId,
-      subjectId: config!.subjectId,
-      title: config!.name,
-      durationSeconds,
-      score: totalScore,
-      maxScore,
-      answers: { config, answers: graded, totalScore, maxScore, durationSeconds },
-    })
-
-    setResult(graded)
-    setPhase('results')
   }
 
   if (!config) {
@@ -254,6 +260,7 @@ export function ExamTaking() {
           </div>
         ))}
 
+        {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
         <button
           onClick={handleSubmit}
           className="w-full rounded-xl py-3.5 font-medium text-white bg-[var(--color-primary)] mt-2"
