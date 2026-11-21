@@ -24,7 +24,11 @@ async function callChatCompletions(
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`
 
   const body: Record<string, unknown> = { model, messages }
-  if (jsonMode) body.response_format = { type: 'json_object' }
+  if (jsonMode) {
+    body.response_format = { type: 'json_object' }
+    // Raised past most providers' default so large exhaustive generations don't get cut off mid-JSON.
+    body.max_tokens = 16384
+  }
 
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
 

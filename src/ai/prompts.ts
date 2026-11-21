@@ -128,8 +128,17 @@ export const EXERCISE_SYSTEM_PROMPT = `Tu crées des exercices (calculs, applica
 Règles impératives : base-toi uniquement sur le contenu fourni. Donne des indices progressifs (du plus léger au plus explicite) et une correction détaillée étape par étape.
 Réponds uniquement en JSON strict : {"exercises": [{"statement": string, "hints": string[], "steps": string[], "finalAnswer": string}]}`
 
-export function activityUserPrompt(opts: { content: string; count: number; difficulty: string; instructions: string }) {
-  return `Contenu de cours :\n"""\n${opts.content}\n"""\n\nGénère ${opts.count} élément(s), difficulté "${opts.difficulty}".${
+export function activityUserPrompt(opts: {
+  content: string
+  count: number
+  difficulty: string
+  instructions: string
+  exhaustive?: boolean
+}) {
+  const countInstruction = opts.exhaustive
+    ? `Extrais ABSOLUMENT TOUS les éléments pertinents présents dans le contenu fourni, sans te limiter à un nombre précis — qu'il y en ait 5 ou 300, n'en omets aucun.`
+    : `Génère ${opts.count} élément(s).`
+  return `Contenu de cours :\n"""\n${opts.content}\n"""\n\n${countInstruction} Difficulté "${opts.difficulty}".${
     opts.instructions ? ` Instructions supplémentaires de l'étudiante : "${opts.instructions}"` : ''
   }`
 }

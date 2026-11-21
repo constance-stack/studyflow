@@ -12,6 +12,7 @@ import {
   History,
   MessageSquareQuote,
   Calculator,
+  Infinity as InfinityIcon,
 } from 'lucide-react'
 import { Sheet } from './Sheet'
 import { db } from '../db/schema'
@@ -111,6 +112,7 @@ export function GenerateActivitySheet({
 }) {
   const [type, setType] = useState<ActivityType>('flashcard')
   const [count, setCount] = useState(10)
+  const [exhaustive, setExhaustive] = useState(false)
   const [difficulty, setDifficulty] = useState('moyen')
   const [instructions, setInstructions] = useState('')
   const [loading, setLoading] = useState(false)
@@ -125,7 +127,7 @@ export function GenerateActivitySheet({
         .map((d) => d.textContent || d.extractedText || '')
         .filter(Boolean)
         .join('\n\n')
-        .slice(0, 20000)
+        .slice(0, exhaustive ? 60000 : 20000)
 
       if (!content.trim()) {
         throw new Error(
@@ -133,7 +135,7 @@ export function GenerateActivitySheet({
         )
       }
 
-      const params: GenerationParams = { content, count, difficulty, instructions }
+      const params: GenerationParams = { content, count, difficulty, instructions, exhaustive }
       const generatedContent = await generateForType(type, params)
       if (isEmptyResult(type, generatedContent)) {
         throw new Error("L'IA n'a rien généré à partir de ce contenu.")
@@ -145,7 +147,7 @@ export function GenerateActivitySheet({
         type,
         title: `${TYPE_LABELS[type]} — ${chapterName}`,
         source: 'ai',
-        config: { count, difficulty, instructions },
+        config: { count, difficulty, instructions, exhaustive },
         content: generatedContent,
       })
 
@@ -203,10 +205,11 @@ export function GenerateActivitySheet({
             <input
               type="number"
               min={1}
-              max={30}
+              max={100}
+              disabled={exhaustive}
               value={count}
-              onChange={(e) => setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-              className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm"
+              onChange={(e) => setCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+              className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm disabled:opacity-40"
             />
           </div>
           <div className="flex-1">
@@ -224,6 +227,21 @@ export function GenerateActivitySheet({
             </select>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setExhaustive((v) => !v)}
+          className={`flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-sm font-medium ${
+            exhaustive ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' : 'bg-[var(--color-surface-muted)]'
+          }`}
+        >
+          <InfinityIcon size={16} className="shrink-0" />
+          {type === 'vocab'
+            ? 'Tous les mots de vocabulaire (sans limite)'
+            : type === 'match'
+              ? 'Toutes les paires possibles (sans limite)'
+              : 'Tout extraire, sans limite de nombre'}
+        </button>
 
         <div>
           <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">

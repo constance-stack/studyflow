@@ -132,6 +132,7 @@ export interface GenerationParams {
   count: number
   difficulty: string
   instructions: string
+  exhaustive?: boolean
 }
 
 export async function generateFlashcards(params: GenerationParams): Promise<FlashcardItem[]> {

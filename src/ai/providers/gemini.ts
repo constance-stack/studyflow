@@ -33,7 +33,9 @@ async function callGemini(
 
   const body: Record<string, unknown> = {
     contents,
-    generationConfig: jsonMode ? { responseMimeType: 'application/json' } : {},
+    // maxOutputTokens raised well past the default so large exhaustive generations (e.g. an
+    // entire vocab list) don't get silently cut off mid-JSON.
+    generationConfig: jsonMode ? { responseMimeType: 'application/json', maxOutputTokens: 16384 } : {},
     safetySettings: SAFETY_SETTINGS,
   }
   if (systemInstruction) {
