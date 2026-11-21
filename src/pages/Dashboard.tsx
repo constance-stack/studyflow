@@ -20,15 +20,17 @@ function QuickAction({
   label,
   available,
   onClick,
+  onUnavailable,
 }: {
   icon: React.ReactNode
   label: string
   available: boolean
   onClick: () => void
+  onUnavailable?: () => void
 }) {
   return (
     <button
-      onClick={available ? onClick : undefined}
+      onClick={available ? onClick : onUnavailable}
       className={`flex flex-col items-center gap-2 rounded-2xl p-4 flex-1 ${
         available ? 'bg-[var(--color-surface)] active:scale-95' : 'bg-[var(--color-surface-muted)] opacity-60'
       } transition-transform`}
@@ -94,12 +96,14 @@ export function Dashboard() {
             label="Révision rapide"
             available={activityCount > 0}
             onClick={() => launchQuick('due', 'Révision rapide')}
+            onUnavailable={() => navigate('/library')}
           />
           <QuickAction
             icon={<Shuffle size={22} className="text-[var(--color-primary)]" />}
             label="Révision aléatoire"
             available={activityCount > 0}
             onClick={() => launchQuick('all', 'Révision aléatoire')}
+            onUnavailable={() => navigate('/library')}
           />
           <QuickAction
             icon={<GraduationCap size={22} className="text-[var(--color-primary)]" />}

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Check, X, Volume2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Check, X, Volume2, ChevronLeft, ChevronRight, RotateCw } from 'lucide-react'
 import { MathText } from './MathText'
 import type { Activity } from '../db/types'
 import type {
@@ -16,30 +16,106 @@ import type {
   ExerciseItem,
 } from '../ai/generate'
 
+const SWIPE_THRESHOLD = 70
+
 function FlashcardPreview({ cards }: { cards: FlashcardItem[] }) {
-  const [flipped, setFlipped] = useState<Set<number>>(new Set())
-  function toggle(i: number) {
-    setFlipped((prev) => {
-      const next = new Set(prev)
-      if (next.has(i)) next.delete(i)
-      else next.add(i)
-      return next
-    })
+  const [index, setIndex] = useState(0)
+  const [flipped, setFlipped] = useState(false)
+  const [dragX, setDragX] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const startRef = useRef(0)
+  const movedRef = useRef(false)
+  const card = cards[index]
+
+  function go(delta: number) {
+    setIndex((i) => Math.max(0, Math.min(cards.length - 1, i + delta)))
+    setFlipped(false)
+    setDragX(0)
   }
+
+  function onPointerDown(e: React.PointerEvent) {
+    startRef.current = e.clientX
+    movedRef.current = false
+    setDragging(true)
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragging) return
+    const delta = e.clientX - startRef.current
+    if (Math.abs(delta) > 4) movedRef.current = true
+    if ((delta > 0 && index === 0) || (delta < 0 && index === cards.length - 1)) {
+      setDragX(delta / 3)
+    } else {
+      setDragX(delta)
+    }
+  }
+
+  function onPointerUp() {
+    if (!dragging) return
+    setDragging(false)
+    if (dragX < -SWIPE_THRESHOLD && index < cards.length - 1) go(1)
+    else if (dragX > SWIPE_THRESHOLD && index > 0) go(-1)
+    else setDragX(0)
+  }
+
+  function handleTap() {
+    if (movedRef.current) return
+    setFlipped((f) => !f)
+  }
+
+  if (!card) return null
+
   return (
-    <div className="flex flex-col gap-2.5">
-      {cards.map((c, i) => (
-        <button
-          key={i}
-          onClick={() => toggle(i)}
-          className="text-left rounded-xl bg-[var(--color-surface-muted)] p-3.5"
+    <div className="flex flex-col gap-3">
+      <div className="relative h-56 select-none">
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClick={handleTap}
+          className="absolute inset-0 rounded-2xl bg-[var(--color-surface-muted)] p-5 flex flex-col items-center justify-center text-center gap-3 cursor-pointer touch-none"
+          style={{
+            transform: `translateX(${dragX}px) rotate(${dragX / 20}deg)`,
+            transition: dragging ? 'none' : 'transform 0.2s ease-out',
+          }}
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-1">
-            {flipped.has(i) ? 'Réponse' : 'Question'} · carte {i + 1}
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+            {flipped ? 'Réponse' : 'Question'} · carte {index + 1}/{cards.length}
           </p>
-          <MathText text={flipped.has(i) ? c.back : c.front} className="text-sm" />
+          <MathText text={flipped ? card.back : card.front} className="text-sm font-medium" />
+          <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] mt-1">
+            <RotateCw size={12} /> Toucher pour retourner
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => go(-1)}
+          disabled={index === 0}
+          className="p-2 rounded-full bg-[var(--color-surface-muted)] disabled:opacity-30"
+          aria-label="Carte précédente"
+        >
+          <ChevronLeft size={18} />
         </button>
-      ))}
+        <div className="flex gap-1">
+          {cards.map((_, i) => (
+            <span
+              key={i}
+              className={`w-1.5 h-1.5 rounded-full ${i === index ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-surface-muted)]'}`}
+            />
+          ))}
+        </div>
+        <button
+          onClick={() => go(1)}
+          disabled={index === cards.length - 1}
+          className="p-2 rounded-full bg-[var(--color-surface-muted)] disabled:opacity-30"
+          aria-label="Carte suivante"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
     </div>
   )
 }

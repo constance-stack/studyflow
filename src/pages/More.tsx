@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  CalendarDays,
+  GraduationCap,
   BarChart3,
   Bot,
   Moon,
@@ -78,7 +78,7 @@ export function More() {
   }
 
   const links = [
-    { to: '/calendar', label: 'Calendrier', icon: CalendarDays },
+    { to: '/exams', label: 'Examens', icon: GraduationCap },
     { to: '/stats', label: 'Statistiques', icon: BarChart3 },
     { to: '/assistant', label: 'Assistant IA', icon: Bot },
   ]

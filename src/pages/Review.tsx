@@ -21,7 +21,7 @@ import {
 import { db } from '../db/schema'
 import { TopBar } from '../components/TopBar'
 import { EmptyState } from '../components/EmptyState'
-import { getCardStatesForActivities, getDueCardStates } from '../srs/cardState'
+import { getCardStatesForActivities } from '../srs/cardState'
 import { loadActiveSession } from '../srs/activeSession'
 import type { Activity, ActivityType } from '../db/types'
 import { buildDeck, type DeckFilter } from '../srs/deck'
@@ -47,7 +47,6 @@ export function Review() {
   const activities = useLiveQuery(() => db.activities.toArray()) ?? []
   const subjects = useLiveQuery(() => db.subjects.orderBy('order').toArray()) ?? []
   const chapters = useLiveQuery(() => db.chapters.toArray()) ?? []
-  const dueCount = useLiveQuery(() => getDueCardStates().then((s) => s.length)) ?? 0
   const activeSession = useLiveQuery(() => loadActiveSession())
 
   const [subjectId, setSubjectId] = useState('all')
@@ -70,6 +69,13 @@ export function Review() {
     return buildDeck(scopedActivities, filter, states)
   }, [scopedActivities, filter])
   const itemCount = scopedDeck?.length ?? 0
+
+  const scopedDueCount = useLiveQuery(async () => {
+    const ids = scopedActivities.map((a) => a.id)
+    if (ids.length === 0) return 0
+    const states = await getCardStatesForActivities(ids)
+    return buildDeck(scopedActivities, 'due', states).length
+  }, [scopedActivities]) ?? 0
 
   const typeBreakdown = useMemo(() => {
     const counts = new Map<ActivityType, number>()
@@ -121,27 +127,6 @@ export function Review() {
           </button>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <button
-            onClick={() => launch(activities, 'due', false, 'À réviser aujourd\'hui')}
-            disabled={activities.length === 0}
-            className="rounded-2xl bg-[var(--color-surface)] p-4 text-left disabled:opacity-40"
-          >
-            <Flame size={20} className="text-[var(--color-primary)] mb-2" />
-            <p className="font-semibold text-sm">À réviser aujourd'hui</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{dueCount} carte(s)</p>
-          </button>
-          <button
-            onClick={() => launch(activities, 'all', false, 'Révision aléatoire')}
-            disabled={activities.length === 0}
-            className="rounded-2xl bg-[var(--color-surface)] p-4 text-left disabled:opacity-40"
-          >
-            <Shuffle size={20} className="text-[var(--color-primary)] mb-2" />
-            <p className="font-semibold text-sm">Révision mixte</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Toutes matières</p>
-          </button>
-        </div>
-
         {activities.length === 0 ? (
           <EmptyState
             icon={<Zap size={32} />}
@@ -159,42 +144,72 @@ export function Review() {
         ) : (
           <>
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+              Que veux-tu réviser ?
+            </p>
+            <div className="flex gap-2 mb-4">
+              <select
+                value={subjectId}
+                onChange={(e) => {
+                  setSubjectId(e.target.value)
+                  setChapterId('all')
+                }}
+                className="flex-1 rounded-xl px-3 py-2.5 bg-[var(--color-surface)] text-sm outline-none"
+              >
+                <option value="all">Toutes les matières</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={chapterId}
+                onChange={(e) => setChapterId(e.target.value)}
+                disabled={subjectId === 'all'}
+                className="flex-1 rounded-xl px-3 py-2.5 bg-[var(--color-surface)] text-sm outline-none disabled:opacity-40"
+              >
+                <option value="all">Tous les chapitres</option>
+                {chapters
+                  .filter((c) => c.subjectId === subjectId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => launch(scopedActivities, 'due', false, "À réviser aujourd'hui")}
+                disabled={scopedActivities.length === 0}
+                className="rounded-2xl bg-[var(--color-surface)] p-4 text-left disabled:opacity-40"
+              >
+                <Flame size={20} className="text-[var(--color-primary)] mb-2" />
+                <p className="font-semibold text-sm">À réviser aujourd'hui</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{scopedDueCount} carte(s)</p>
+              </button>
+              <button
+                onClick={() => launch(scopedActivities, 'all', false, 'Révision mixte')}
+                disabled={scopedActivities.length === 0}
+                className="rounded-2xl bg-[var(--color-surface)] p-4 text-left disabled:opacity-40"
+              >
+                <Shuffle size={20} className="text-[var(--color-primary)] mb-2" />
+                <p className="font-semibold text-sm">Révision mixte</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                  {chapterId !== 'all'
+                    ? chapters.find((c) => c.id === chapterId)?.name
+                    : subjectId !== 'all'
+                      ? subjects.find((s) => s.id === subjectId)?.name
+                      : 'Toutes matières'}
+                </p>
+              </button>
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
               Révision personnalisée
             </p>
             <div className="rounded-2xl bg-[var(--color-surface)] p-4 flex flex-col gap-4 mb-6">
-              <div className="flex gap-2">
-                <select
-                  value={subjectId}
-                  onChange={(e) => {
-                    setSubjectId(e.target.value)
-                    setChapterId('all')
-                  }}
-                  className="flex-1 rounded-xl px-3 py-2 bg-[var(--color-surface-muted)] text-sm outline-none"
-                >
-                  <option value="all">Toutes les matières</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={chapterId}
-                  onChange={(e) => setChapterId(e.target.value)}
-                  disabled={subjectId === 'all'}
-                  className="flex-1 rounded-xl px-3 py-2 bg-[var(--color-surface-muted)] text-sm outline-none disabled:opacity-40"
-                >
-                  <option value="all">Tous les chapitres</option>
-                  {chapters
-                    .filter((c) => c.subjectId === subjectId)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
               <div className="flex gap-2">
                 {([
                   ['all', 'Toutes'],
@@ -212,7 +227,6 @@ export function Review() {
                   </button>
                 ))}
               </div>
-
               <button
                 onClick={() => setUntilMastered((v) => !v)}
                 className={`flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-sm font-medium ${

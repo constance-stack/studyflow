@@ -63,6 +63,7 @@ export function StudySession() {
   const [cardInstanceKey, setCardInstanceKey] = useState(0)
   const [exitConfirm, setExitConfirm] = useState(false)
   const [finished, setFinished] = useState(false)
+  const [emptyAtStart, setEmptyAtStart] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
 
   const attemptsRef = useRef<Map<string, number>>(new Map())
@@ -130,6 +131,7 @@ export function StudySession() {
         sessionIdRef.current = session.id
         persistSnapshot(deck.slice(1), deck[0] ?? null, deck.length, 0)
       } else {
+        setEmptyAtStart(true)
         setFinished(true)
       }
     })
@@ -270,6 +272,26 @@ export function StudySession() {
     const insertAt = Math.min(nextQueue.length, REQUEUE_OFFSET)
     nextQueue.splice(insertAt, 0, current)
     advance(nextQueue, seenCountRef.current)
+  }
+
+  if (finished && emptyAtStart) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <PartyPopper size={40} className="text-[var(--color-primary)] mb-4" />
+        <h1 className="text-xl font-bold mb-1">Rien à réviser pour l'instant</h1>
+        <p className="text-sm text-[var(--color-text-muted)] mb-6 max-w-xs">
+          {config.filter === 'due'
+            ? "Tu es à jour sur ce que tu as sélectionné — aucune carte n'est due aujourd'hui. Essaie la révision mixte pour t'entraîner quand même."
+            : "Aucune carte ne correspond à ce que tu as sélectionné pour l'instant."}
+        </p>
+        <button
+          onClick={() => navigate('/review')}
+          className="rounded-xl px-6 py-3 bg-[var(--color-primary)] text-white font-medium"
+        >
+          Retour aux révisions
+        </button>
+      </div>
+    )
   }
 
   if (finished) {

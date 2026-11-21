@@ -25,6 +25,8 @@ import {
   Calculator,
   PenSquare,
   FileSpreadsheet,
+  Zap,
+  Play,
 } from 'lucide-react'
 import { db } from '../db/schema'
 import {
@@ -48,7 +50,10 @@ import { EditActivityContentSheet } from '../components/EditActivityContentSheet
 import { GenerateRevisionSheetSheet } from '../components/GenerateRevisionSheetSheet'
 import { ActivityPreview } from '../components/ActivityPreview'
 import { getAIConfig } from '../ai/settings'
+import { getCardStatesForActivities } from '../srs/cardState'
+import { buildDeck } from '../srs/deck'
 import type { Activity, DocumentRecord, RevisionSheet } from '../db/types'
+import type { SessionConfig } from './StudySession'
 
 function docIcon(type: DocumentRecord['type']) {
   if (type === 'pdf') return <FileText size={18} />
@@ -123,6 +128,19 @@ export function ChapterView() {
   const [deleteSheetTarget, setDeleteSheetTarget] = useState<RevisionSheet | null>(null)
 
   if (!chapter || !subject) return null
+
+  async function launchRevision(forActivities: Activity[], title: string) {
+    const states = await getCardStatesForActivities(forActivities.map((a) => a.id))
+    const deck = buildDeck(forActivities, 'all', states)
+    if (deck.length === 0) return
+    const config: SessionConfig = {
+      activityIds: forActivities.map((a) => a.id),
+      filter: 'all',
+      untilMastered: false,
+      title,
+    }
+    navigate('/review/session', { state: config })
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -214,9 +232,19 @@ export function ChapterView() {
           </div>
         )}
 
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
-          Activités générées
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+            Activités générées
+          </p>
+          {activities.length > 0 && (
+            <button
+              onClick={() => launchRevision(activities, `Réviser — ${chapter.name}`)}
+              className="flex items-center gap-1 text-xs font-medium text-[var(--color-primary)]"
+            >
+              <Zap size={13} /> Réviser ce chapitre
+            </button>
+          )}
+        </div>
         {activities.length === 0 ? (
           <EmptyState
             icon={<Sparkles size={32} />}
@@ -242,6 +270,16 @@ export function ChapterView() {
                   <p className="text-xs text-[var(--color-text-muted)]">{activityItemCount(a)} élément(s)</p>
                 </div>
                 {a.favorite && <Star size={16} className="text-yellow-500 fill-yellow-500 shrink-0" />}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    launchRevision([a], a.title)
+                  }}
+                  className="p-2 rounded-full text-[var(--color-primary)] shrink-0"
+                  aria-label="Réviser"
+                >
+                  <Play size={17} />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -406,6 +444,20 @@ export function ChapterView() {
         open={!!previewActivity}
         onClose={() => setPreviewActivity(null)}
         title={previewActivity?.title ?? ''}
+        footer={
+          previewActivity && (
+            <button
+              onClick={() => {
+                const a = previewActivity
+                setPreviewActivity(null)
+                launchRevision([a], a.title)
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-medium text-white bg-[var(--color-primary)]"
+            >
+              <Zap size={16} /> Réviser
+            </button>
+          )
+        }
       >
         {previewActivity && <ActivityPreview activity={previewActivity} />}
       </Sheet>
