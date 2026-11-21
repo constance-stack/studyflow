@@ -1,4 +1,4 @@
-import type { AIProvider, ChatMessage, GenerateJSONOptions } from '../types'
+import type { AIProvider, ChatMessage, GenerateJSONOptions, ModelInfo } from '../types'
 import { parseLenientJSON } from '../parseJson'
 
 interface GeminiPart {
@@ -37,6 +37,11 @@ async function callGemini(
     if (res.status === 429) {
       throw new Error("Quota gratuit Gemini atteint pour l'instant — réessaie dans quelques minutes.")
     }
+    if (res.status === 404) {
+      throw new Error(
+        `Le modèle "${model}" n'existe plus ou n'est pas accessible avec ta clé. Dans Configurer l'IA, utilise "Lister les modèles" pour choisir un modèle actuellement disponible.`,
+      )
+    }
     throw new Error(`Erreur Gemini (${res.status}) : ${errText.slice(0, 200) || res.statusText}`)
   }
 
@@ -71,6 +76,26 @@ export function createGeminiProvider(apiKey: string, model: string): AIProvider 
 
     async testConnection() {
       await callGemini(apiKey, model, [{ role: 'user', parts: [{ text: 'Réponds juste "ok".' }] }])
+    },
+
+    async listModels(): Promise<ModelInfo[]> {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=200`
+      const res = await fetch(url)
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        if (res.status === 400 && errText.includes('API_KEY_INVALID')) throw new Error('Clé API Gemini invalide.')
+        throw new Error(`Erreur Gemini (${res.status}) : ${errText.slice(0, 200) || res.statusText}`)
+      }
+      const json = await res.json()
+      const models = (json?.models ?? []) as Array<{
+        name: string
+        displayName?: string
+        supportedGenerationMethods?: string[]
+      }>
+      return models
+        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }))
+        .sort((a, b) => a.id.localeCompare(b.id))
     },
   }
 }

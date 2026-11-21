@@ -1,4 +1,4 @@
-import type { AIProvider, ChatMessage, GenerateJSONOptions, ImagePart } from '../types'
+import type { AIProvider, ChatMessage, GenerateJSONOptions, ImagePart, ModelInfo } from '../types'
 import { parseLenientJSON } from '../parseJson'
 
 type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
@@ -62,6 +62,17 @@ export function createOpenAICompatibleProvider(baseUrl: string, apiKey: string, 
 
     async testConnection() {
       await callChatCompletions(baseUrl, apiKey, model, [{ role: 'user', content: 'Réponds juste "ok".' }])
+    },
+
+    async listModels(): Promise<ModelInfo[]> {
+      const url = `${baseUrl.replace(/\/+$/, '')}/models`
+      const headers: Record<string, string> = {}
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+      const res = await fetch(url, { headers })
+      if (!res.ok) throw new Error(`Ce fournisseur ne permet pas de lister les modèles (${res.status}).`)
+      const json = await res.json()
+      const models = (json?.data ?? []) as Array<{ id: string }>
+      return models.map((m) => ({ id: m.id, label: m.id })).sort((a, b) => a.id.localeCompare(b.id))
     },
   }
 }

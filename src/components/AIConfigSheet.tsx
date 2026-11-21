@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react'
+import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldAlert, ListChecks } from 'lucide-react'
 import { Sheet } from './Sheet'
-import { PROVIDER_PRESETS, type AIConfig, type AIProviderKind } from '../ai/types'
+import { PROVIDER_PRESETS, type AIConfig, type AIProviderKind, type ModelInfo } from '../ai/types'
 import { buildProvider } from '../ai/client'
 import { setAIConfig, clearAIConfig } from '../ai/settings'
 
@@ -23,6 +23,9 @@ export function AIConfigSheet({
   const [showKey, setShowKey] = useState(false)
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [testError, setTestError] = useState('')
+  const [modelsState, setModelsState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [modelsError, setModelsError] = useState('')
+  const [availableModels, setAvailableModels] = useState<ModelInfo[] | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -32,12 +35,32 @@ export function AIConfigSheet({
     setBaseUrl(initial?.baseUrl ?? '')
     setTestState('idle')
     setTestError('')
+    setModelsState('idle')
+    setAvailableModels(null)
   }, [open, initial])
 
   function handleProviderChange(p: AIProviderKind) {
     setProvider(p)
     setModel(PROVIDER_PRESETS[p].defaultModel)
     setTestState('idle')
+    setModelsState('idle')
+    setAvailableModels(null)
+  }
+
+  async function handleListModels() {
+    setModelsState('loading')
+    setModelsError('')
+    setAvailableModels(null)
+    try {
+      const cfg: AIConfig = { provider, apiKey: apiKey.trim(), model: model.trim(), baseUrl: baseUrl.trim() }
+      const models = await buildProvider(cfg).listModels()
+      if (models.length === 0) throw new Error('Aucun modèle compatible trouvé pour cette clé.')
+      setAvailableModels(models)
+      setModelsState('idle')
+    } catch (e) {
+      setModelsState('error')
+      setModelsError(e instanceof Error ? e.message : 'Impossible de lister les modèles.')
+    }
   }
 
   const preset = PROVIDER_PRESETS[provider]
@@ -133,10 +156,43 @@ export function AIConfigSheet({
           <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">Modèle</label>
           <input
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="gemini-2.0-flash"
-            className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm"
+            onChange={(e) => {
+              setModel(e.target.value)
+              setTestState('idle')
+            }}
+            placeholder="gemini-2.5-flash"
+            className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm mb-2"
           />
+          <button
+            type="button"
+            onClick={handleListModels}
+            disabled={apiKey.trim().length === 0 || modelsState === 'loading'}
+            className="flex items-center gap-1.5 text-sm text-[var(--color-primary)] font-medium disabled:opacity-40"
+          >
+            {modelsState === 'loading' ? <Loader2 size={14} className="animate-spin" /> : <ListChecks size={14} />}
+            Lister les modèles disponibles
+          </button>
+          {modelsState === 'error' && <p className="text-sm text-red-500 mt-1.5">{modelsError}</p>}
+          {availableModels && (
+            <div className="flex flex-col gap-1 mt-2 max-h-48 overflow-y-auto rounded-xl bg-[var(--color-surface-muted)] p-1.5">
+              {availableModels.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setModel(m.id)
+                    setTestState('idle')
+                  }}
+                  className={`text-left rounded-lg px-3 py-2 text-sm ${
+                    model === m.id ? 'bg-[var(--color-primary)] text-white' : 'hover:bg-[var(--color-surface)]'
+                  }`}
+                >
+                  <p className="font-medium">{m.id}</p>
+                  {m.label !== m.id && <p className="text-xs opacity-75">{m.label}</p>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

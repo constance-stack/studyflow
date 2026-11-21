@@ -23,10 +23,16 @@ export interface GenerateJSONOptions {
   images?: ImagePart[]
 }
 
+export interface ModelInfo {
+  id: string
+  label: string
+}
+
 export interface AIProvider {
   generateText(messages: ChatMessage[], systemPrompt?: string): Promise<string>
   generateJSON(options: GenerateJSONOptions): Promise<unknown>
   testConnection(): Promise<void>
+  listModels(): Promise<ModelInfo[]>
 }
 
 export const PROVIDER_PRESETS: Record<
@@ -35,7 +41,7 @@ export const PROVIDER_PRESETS: Record<
 > = {
   gemini: {
     label: 'Google Gemini (recommandé, gratuit)',
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-2.5-flash',
     costNote:
       "Gratuit dans la limite du quota gratuit de l'API Gemini (Google AI Studio) : quelques dizaines de requêtes par minute, largement suffisant pour un usage personnel. Au-delà du quota gratuit, Google peut facturer si tu actives la facturation — ce que cette app ne fait jamais à ta place.",
     needsBaseUrl: false,
