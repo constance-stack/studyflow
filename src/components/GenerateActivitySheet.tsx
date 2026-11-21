@@ -95,6 +95,61 @@ function isEmptyResult(type: ActivityType, result: unknown): boolean {
   return !Array.isArray(result) || result.length === 0
 }
 
+// 'match'/'timeline' wrap their list inside a single-element array ([{ pairs }] / [{ events }]);
+// every other type returns a flat array of items. These two helpers normalize both shapes so
+// chunked exhaustive generation can merge results the same way regardless of type.
+function flattenResult(type: ActivityType, result: unknown): unknown[] {
+  if (type === 'match') return (result as { pairs: unknown[] }[])[0]?.pairs ?? []
+  if (type === 'timeline') return (result as { events: unknown[] }[])[0]?.events ?? []
+  return Array.isArray(result) ? result : []
+}
+
+function wrapResult(type: ActivityType, items: unknown[]): unknown {
+  if (type === 'match') return [{ pairs: items }]
+  if (type === 'timeline') return [{ events: items }]
+  return items
+}
+
+function dedupeItems(items: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const result: unknown[] = []
+  for (const item of items) {
+    const key = JSON.stringify(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result
+}
+
+// Splits long content on paragraph boundaries (falling back to a hard cut) so an exhaustive
+// generation covers the whole document via several smaller requests instead of one huge one
+// that risks a token/quota error or truncated JSON.
+function splitIntoChunks(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text]
+  const paragraphs = text.split(/\n{2,}/)
+  const chunks: string[] = []
+  let current = ''
+  for (const p of paragraphs) {
+    const candidate = current ? `${current}\n\n${p}` : p
+    if (candidate.length > maxLen && current) {
+      chunks.push(current)
+      current = p
+    } else {
+      current = candidate
+    }
+    while (current.length > maxLen) {
+      chunks.push(current.slice(0, maxLen))
+      current = current.slice(maxLen)
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks
+}
+
+const CHUNK_SIZE = 6000
+const CHUNK_DELAY_MS = 1200
+
 export function GenerateActivitySheet({
   open,
   onClose,
@@ -117,10 +172,12 @@ export function GenerateActivitySheet({
   const [instructions, setInstructions] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   async function handleGenerate() {
     setLoading(true)
     setError(null)
+    setProgress(null)
     try {
       const docs = await db.documents.where('chapterId').equals(chapterId).toArray()
       const content = docs
@@ -135,8 +192,35 @@ export function GenerateActivitySheet({
         )
       }
 
-      const params: GenerationParams = { content, count, difficulty, instructions, exhaustive }
-      const generatedContent = await generateForType(type, params)
+      let generatedContent: unknown
+      if (exhaustive && content.length > CHUNK_SIZE) {
+        // One giant "extract everything" request risks a token/quota error or truncated JSON on
+        // the free tier, so split the content and merge the results from several smaller calls.
+        const chunks = splitIntoChunks(content, CHUNK_SIZE)
+        const collected: unknown[] = []
+        const chunkErrors: string[] = []
+        for (let i = 0; i < chunks.length; i++) {
+          setProgress({ done: i, total: chunks.length })
+          if (i > 0) await new Promise((r) => setTimeout(r, CHUNK_DELAY_MS))
+          try {
+            const chunkResult = await generateForType(type, { content: chunks[i], count, difficulty, instructions, exhaustive })
+            collected.push(...flattenResult(type, chunkResult))
+          } catch (e) {
+            chunkErrors.push(e instanceof Error ? e.message : 'erreur inconnue')
+          }
+        }
+        setProgress({ done: chunks.length, total: chunks.length })
+        if (collected.length === 0) {
+          throw new Error(
+            chunkErrors[0] ?? "L'IA n'a rien généré à partir de ce contenu.",
+          )
+        }
+        generatedContent = wrapResult(type, dedupeItems(collected))
+      } else {
+        const params: GenerationParams = { content, count, difficulty, instructions, exhaustive }
+        generatedContent = await generateForType(type, params)
+      }
+
       if (isEmptyResult(type, generatedContent)) {
         throw new Error("L'IA n'a rien généré à partir de ce contenu.")
       }
@@ -157,6 +241,7 @@ export function GenerateActivitySheet({
       setError(e instanceof Error ? e.message : 'Erreur lors de la génération.')
     } finally {
       setLoading(false)
+      setProgress(null)
     }
   }
 
@@ -172,7 +257,11 @@ export function GenerateActivitySheet({
           className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-medium text-white bg-[var(--color-primary)] disabled:opacity-60"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}
-          {loading ? 'Génération en cours...' : 'Générer'}
+          {loading
+            ? progress
+              ? `Génération... (${Math.min(progress.done + 1, progress.total)}/${progress.total})`
+              : 'Génération en cours...'
+            : 'Générer'}
         </button>
       }
     >
