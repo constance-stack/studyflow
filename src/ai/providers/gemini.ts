@@ -6,6 +6,22 @@ interface GeminiPart {
   inlineData?: { mimeType: string; data: string }
 }
 
+// Raised from Gemini's stricter defaults: legitimate school content (history, chemistry, biology...)
+// routinely trips HARASSMENT/DANGEROUS_CONTENT at the default threshold. Still blocks genuinely severe content.
+const SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+]
+
+const BLOCK_REASON_LABELS: Record<string, string> = {
+  SAFETY: 'contenu jugé sensible',
+  OTHER: 'raison non précisée',
+  BLOCKLIST: 'terme bloqué',
+  PROHIBITED_CONTENT: 'contenu interdit',
+}
+
 async function callGemini(
   apiKey: string,
   model: string,
@@ -18,6 +34,7 @@ async function callGemini(
   const body: Record<string, unknown> = {
     contents,
     generationConfig: jsonMode ? { responseMimeType: 'application/json' } : {},
+    safetySettings: SAFETY_SETTINGS,
   }
   if (systemInstruction) {
     body.systemInstruction = { parts: [{ text: systemInstruction }] }
@@ -49,7 +66,17 @@ async function callGemini(
   const text = json?.candidates?.[0]?.content?.parts?.map((p: GeminiPart) => p.text ?? '').join('') ?? ''
   if (!text) {
     const blockReason = json?.promptFeedback?.blockReason
-    if (blockReason) throw new Error(`Réponse bloquée par Gemini (${blockReason}).`)
+    const finishReason = json?.candidates?.[0]?.finishReason
+    const reason = blockReason ?? (finishReason === 'SAFETY' || finishReason === 'PROHIBITED_CONTENT' ? finishReason : null)
+    if (reason) {
+      const label = BLOCK_REASON_LABELS[reason] ?? reason
+      throw new Error(
+        `Réponse bloquée par les filtres de sécurité de Gemini (${label}). Essaie de reformuler, de réduire le contenu envoyé, ou change de document/chapitre.`,
+      )
+    }
+    if (finishReason === 'MAX_TOKENS') {
+      throw new Error("La réponse de l'IA a dépassé la longueur maximale — réduis le nombre d'éléments demandés.")
+    }
     throw new Error("Réponse vide de l'IA.")
   }
   return text
