@@ -157,6 +157,9 @@ export function GenerateActivitySheet({
   subjectId,
   chapterName,
   onGenerated,
+  overrideDocIds,
+  overrideChapterIds,
+  overrideSubjectIds,
 }: {
   open: boolean
   onClose: () => void
@@ -164,6 +167,11 @@ export function GenerateActivitySheet({
   subjectId: string
   chapterName: string
   onGenerated: () => void
+  // When set (picking specific documents rather than "this whole chapter"), the activity draws
+  // its content from exactly these documents and is tagged with these chapters/subjects instead.
+  overrideDocIds?: string[]
+  overrideChapterIds?: string[]
+  overrideSubjectIds?: string[]
 }) {
   const [type, setType] = useState<ActivityType>('flashcard')
   const [count, setCount] = useState(10)
@@ -179,8 +187,11 @@ export function GenerateActivitySheet({
     setError(null)
     setProgress(null)
     try {
-      const docs = await db.documents.where('chapterId').equals(chapterId).toArray()
+      const docs = overrideDocIds
+        ? await db.documents.bulkGet(overrideDocIds)
+        : await db.documents.where('chapterId').equals(chapterId).toArray()
       const content = docs
+        .filter((d): d is NonNullable<typeof d> => !!d)
         .map((d) => d.textContent || d.extractedText || '')
         .filter(Boolean)
         .join('\n\n')
@@ -188,7 +199,9 @@ export function GenerateActivitySheet({
 
       if (!content.trim()) {
         throw new Error(
-          "Aucun contenu disponible dans ce chapitre. Importe un document et analyse-le avec l'IA, ou ajoute une note, avant de générer une activité.",
+          overrideDocIds
+            ? "Aucun des documents sélectionnés n'a de contenu analysé. Analyse-les avec l'IA d'abord."
+            : "Aucun contenu disponible dans ce chapitre. Importe un document et analyse-le avec l'IA, ou ajoute une note, avant de générer une activité.",
         )
       }
 
@@ -226,8 +239,8 @@ export function GenerateActivitySheet({
       }
 
       await createActivity({
-        subjectIds: [subjectId],
-        chapterIds: [chapterId],
+        subjectIds: overrideSubjectIds ?? [subjectId],
+        chapterIds: overrideChapterIds ?? [chapterId],
         type,
         title: `${TYPE_LABELS[type]} — ${chapterName}`,
         source: 'ai',

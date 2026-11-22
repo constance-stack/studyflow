@@ -12,11 +12,16 @@ import {
   FileText,
   Image as ImageIcon,
   Zap,
+  FileSpreadsheet,
+  FolderOpen,
+  X,
 } from 'lucide-react'
 import { TopBar } from '../components/TopBar'
 import { EmptyState } from '../components/EmptyState'
 import { AIConfigSheet } from '../components/AIConfigSheet'
 import { GenerateActivitySheet } from '../components/GenerateActivitySheet'
+import { GenerateRevisionSheetSheet } from '../components/GenerateRevisionSheetSheet'
+import { DocumentPickerSheet } from '../components/DocumentPickerSheet'
 import { getAIConfig } from '../ai/settings'
 import { getActiveProvider } from '../ai/client'
 import { ASSISTANT_SYSTEM_PROMPT, assistantContextPrefix } from '../ai/prompts'
@@ -25,7 +30,7 @@ import { createSubject, createFolder, createChapter, createDocument, updateDocum
 import { extractDocumentContent } from '../ai/generate'
 import { documentToImageParts } from '../ai/documentImages'
 import type { ChatMessage } from '../ai/types'
-import type { DocumentRecord, DocumentType } from '../db/types'
+import type { DocumentType } from '../db/types'
 
 const SCRATCH_SUBJECT_NAME = 'Mes documents'
 
@@ -42,22 +47,30 @@ export function Assistant() {
   const configured = config !== null && config !== undefined
   const [configOpen, setConfigOpen] = useState(false)
 
-  const subjects = useLiveQuery(() => db.subjects.orderBy('order').toArray()) ?? []
   const chapters = useLiveQuery(() => db.chapters.toArray()) ?? []
-  const [contextChapterId, setContextChapterId] = useState('')
-  const contextDocs =
-    useLiveQuery(
-      () =>
-        contextChapterId
-          ? db.documents.where('chapterId').equals(contextChapterId).sortBy('order')
-          : Promise.resolve<DocumentRecord[]>([]),
-      [contextChapterId],
-    ) ?? []
+  const subjects = useLiveQuery(() => db.subjects.orderBy('order').toArray()) ?? []
+  const allDocuments = useLiveQuery(() => db.documents.toArray()) ?? []
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const selectedDocs = allDocuments.filter((d) => selectedDocIds.includes(d.id))
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [genTarget, setGenTarget] = useState<{ subjectId: string; chapterId: string; chapterName: string } | null>(null)
+  const [genTarget, setGenTarget] = useState<{
+    subjectId: string
+    chapterId: string
+    chapterName: string
+    docIds?: string[]
+    chapterIds?: string[]
+    subjectIds?: string[]
+  } | null>(null)
+  const [ficheTarget, setFicheTarget] = useState<{
+    subjectId: string
+    chapterId: string
+    docIds?: string[]
+    chapterIds?: string[]
+  } | null>(null)
   const [generatedNotice, setGeneratedNotice] = useState<{ chapterId: string } | null>(null)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -83,14 +96,21 @@ export function Assistant() {
       if (!provider) throw new Error("L'IA n'est pas configurée.")
 
       let contextBlock = ''
-      if (contextChapterId) {
-        const chapter = chapters.find((c) => c.id === contextChapterId)
-        const docs = await db.documents.where('chapterId').equals(contextChapterId).toArray()
-        const text = docs
+      if (selectedDocs.length > 0) {
+        const text = selectedDocs
           .map((d) => d.textContent || d.extractedText || '')
           .filter(Boolean)
           .join('\n\n')
-        contextBlock = assistantContextPrefix(chapter ? `chapitre "${chapter.name}"` : null, text || null)
+        if (!text.trim()) {
+          throw new Error(
+            "Les documents sélectionnés n'ont pas encore été analysés par l'IA — ouvre-les pour lancer l'analyse, ou désélectionne-les.",
+          )
+        }
+        const label =
+          selectedDocs.length === 1
+            ? `document "${selectedDocs[0].name}"`
+            : `${selectedDocs.length} documents sélectionnés`
+        contextBlock = assistantContextPrefix(label, text)
       }
 
       const reply = await provider.generateText(
@@ -106,11 +126,9 @@ export function Assistant() {
     }
   }
 
+  // Ad-hoc uploads from this page need somewhere in the library to live; reuse (or create once) a
+  // "Mes documents > Général" chapter rather than forcing a trip through Mes cours first.
   async function ensureWorkspaceChapter(): Promise<{ subjectId: string; chapterId: string; chapterName: string }> {
-    if (contextChapterId) {
-      const chapter = chapters.find((c) => c.id === contextChapterId)
-      if (chapter) return { subjectId: chapter.subjectId, chapterId: chapter.id, chapterName: chapter.name }
-    }
     let subject = subjects.find((s) => s.name === SCRATCH_SUBJECT_NAME)
     if (!subject) subject = await createSubject(SCRATCH_SUBJECT_NAME)
     let chapter = chapters.find((c) => c.subjectId === subject.id)
@@ -118,7 +136,6 @@ export function Assistant() {
       const folder = await createFolder(subject.id, 'Général', null)
       chapter = await createChapter(subject.id, folder.id, 'Général')
     }
-    setContextChapterId(chapter.id)
     return { subjectId: subject.id, chapterId: chapter.id, chapterName: chapter.name }
   }
 
@@ -138,6 +155,7 @@ export function Assistant() {
           mimeType: file.type,
           blob: file,
         })
+        setSelectedDocIds((prev) => [...prev, doc.id])
         try {
           const { images, truncatedPages } = await documentToImageParts(file, file.type)
           const result = await extractDocumentContent(file.name, images)
@@ -162,9 +180,47 @@ export function Assistant() {
     }
   }
 
+  // Figures out where a generated activity/fiche should be filed: the chapter(s)/subject(s) of
+  // the selected documents when there are any, otherwise the shared scratch workspace.
+  async function resolveGenerationTarget(): Promise<{
+    subjectId: string
+    chapterId: string
+    chapterName: string
+    docIds?: string[]
+    chapterIds?: string[]
+    subjectIds?: string[]
+  }> {
+    if (selectedDocs.length > 0) {
+      const docChapterIds = [...new Set(selectedDocs.map((d) => d.chapterId))]
+      const docSubjectIds = [...new Set(selectedDocs.map((d) => d.subjectId))]
+      const chapterNames = docChapterIds.map((id) => chapters.find((c) => c.id === id)?.name).filter(Boolean)
+      return {
+        subjectId: docSubjectIds[0],
+        chapterId: docChapterIds[0],
+        chapterName: chapterNames.length === 1 ? chapterNames[0]! : `${selectedDocs.length} documents sélectionnés`,
+        docIds: selectedDocs.map((d) => d.id),
+        chapterIds: docChapterIds,
+        subjectIds: docSubjectIds,
+      }
+    }
+    return ensureWorkspaceChapter()
+  }
+
   async function openGenerate() {
-    const target = await ensureWorkspaceChapter()
-    setGenTarget(target)
+    if (selectedDocs.length === 0) {
+      setUploadError('Choisis au moins un document (ou ajoutes-en un) avant de générer une activité.')
+      return
+    }
+    setGenTarget(await resolveGenerationTarget())
+  }
+
+  async function openGenerateFiche() {
+    if (selectedDocs.length === 0) {
+      setUploadError('Choisis au moins un document (ou ajoutes-en un) avant de générer une fiche.')
+      return
+    }
+    const target = await resolveGenerationTarget()
+    setFicheTarget(target)
   }
 
   if (!configured) {
@@ -205,24 +261,15 @@ export function Assistant() {
       </div>
 
       <div className="px-4 sm:px-8 max-w-2xl mx-auto w-full flex items-center gap-2 py-2">
-        <select
-          value={contextChapterId}
-          onChange={(e) => setContextChapterId(e.target.value)}
-          className="flex-1 rounded-xl px-3 py-2 bg-[var(--color-surface-muted)] text-sm outline-none"
+        <button
+          onClick={() => setPickerOpen(true)}
+          className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-[var(--color-surface-muted)] text-sm text-left"
         >
-          <option value="">Sans contexte de cours</option>
-          {subjects.map((s) => (
-            <optgroup key={s.id} label={s.name}>
-              {chapters
-                .filter((c) => c.subjectId === s.id)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
+          <FolderOpen size={15} className="text-[var(--color-text-muted)] shrink-0" />
+          {selectedDocs.length === 0
+            ? 'Choisir des documents'
+            : `${selectedDocs.length} document${selectedDocs.length === 1 ? '' : 's'} sélectionné${selectedDocs.length === 1 ? '' : 's'}`}
+        </button>
         <button
           onClick={() => setConfigOpen(true)}
           className="p-2 rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] shrink-0"
@@ -233,18 +280,25 @@ export function Assistant() {
       </div>
 
       <div className="px-4 sm:px-8 max-w-2xl mx-auto w-full pb-2">
-        {contextDocs.length > 0 && (
+        {selectedDocs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
-            {contextDocs.map((d) => (
+            {selectedDocs.map((d) => (
               <span
                 key={d.id}
-                className="flex items-center gap-1.5 text-xs rounded-full bg-[var(--color-surface)] px-2.5 py-1.5"
+                className="flex items-center gap-1.5 text-xs rounded-full bg-[var(--color-surface)] pl-2.5 pr-1.5 py-1.5"
               >
-                {d.type === 'pdf' ? <FileText size={12} /> : <ImageIcon size={12} />}
+                {d.type === 'pdf' ? <FileText size={12} /> : d.type === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
                 {d.name}
-                {!d.extractedText && d.blob && (
-                  <span className="text-[var(--color-text-muted)]">· analyse...</span>
+                {!d.textContent && !d.extractedText && (
+                  <span className="text-[var(--color-text-muted)]">· non analysé</span>
                 )}
+                <button
+                  onClick={() => setSelectedDocIds((prev) => prev.filter((id) => id !== d.id))}
+                  className="rounded-full p-0.5 text-[var(--color-text-muted)]"
+                  aria-label="Retirer"
+                >
+                  <X size={11} />
+                </button>
               </span>
             ))}
           </div>
@@ -256,13 +310,19 @@ export function Assistant() {
             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium bg-[var(--color-surface)] disabled:opacity-50"
           >
             {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-            {uploading ? 'Import...' : 'Ajouter un document'}
+            {uploading ? 'Import...' : 'Ajouter'}
           </button>
           <button
             onClick={openGenerate}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium bg-[var(--color-surface)]"
           >
-            <Zap size={15} /> Générer une activité
+            <Zap size={15} /> Activité
+          </button>
+          <button
+            onClick={openGenerateFiche}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium bg-[var(--color-surface)]"
+          >
+            <FileSpreadsheet size={15} /> Fiche
           </button>
         </div>
         {uploadError && <p className="text-xs text-red-500 mt-1.5">{uploadError}</p>}
@@ -376,9 +436,30 @@ export function Assistant() {
           chapterId={genTarget.chapterId}
           subjectId={genTarget.subjectId}
           chapterName={genTarget.chapterName}
+          overrideDocIds={genTarget.docIds}
+          overrideChapterIds={genTarget.chapterIds}
+          overrideSubjectIds={genTarget.subjectIds}
           onGenerated={() => setGeneratedNotice({ chapterId: genTarget.chapterId })}
         />
       )}
+
+      {ficheTarget && (
+        <GenerateRevisionSheetSheet
+          open={!!ficheTarget}
+          onClose={() => setFicheTarget(null)}
+          chapterId={ficheTarget.chapterId}
+          subjectId={ficheTarget.subjectId}
+          overrideDocIds={ficheTarget.docIds}
+          overrideChapterIds={ficheTarget.chapterIds}
+        />
+      )}
+
+      <DocumentPickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        initialSelected={selectedDocIds}
+        onConfirm={setSelectedDocIds}
+      />
     </div>
   )
 }

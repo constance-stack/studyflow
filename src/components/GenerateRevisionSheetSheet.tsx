@@ -22,11 +22,17 @@ export function GenerateRevisionSheetSheet({
   onClose,
   chapterId,
   subjectId,
+  overrideDocIds,
+  overrideChapterIds,
 }: {
   open: boolean
   onClose: () => void
   chapterId: string
   subjectId: string
+  // When set (picking specific documents rather than "this whole chapter"), the sheet draws its
+  // content from exactly these documents and is tagged with these chapters instead.
+  overrideDocIds?: string[]
+  overrideChapterIds?: string[]
 }) {
   const navigate = useNavigate()
   const [format, setFormat] = useState<RevisionSheetFormat>('resume_court')
@@ -38,17 +44,30 @@ export function GenerateRevisionSheetSheet({
     setLoading(true)
     setError(null)
     try {
-      const docs = await db.documents.where('chapterId').equals(chapterId).toArray()
+      const docs = overrideDocIds
+        ? await db.documents.bulkGet(overrideDocIds)
+        : await db.documents.where('chapterId').equals(chapterId).toArray()
       const content = docs
+        .filter((d): d is NonNullable<typeof d> => !!d)
         .map((d) => d.textContent || d.extractedText || '')
         .filter(Boolean)
         .join('\n\n')
         .slice(0, 20000)
       if (!content.trim()) {
-        throw new Error("Aucun contenu disponible dans ce chapitre. Importe et analyse un document d'abord.")
+        throw new Error(
+          overrideDocIds
+            ? "Aucun des documents sélectionnés n'a de contenu analysé. Analyse-les avec l'IA d'abord."
+            : "Aucun contenu disponible dans ce chapitre. Importe et analyse un document d'abord.",
+        )
       }
       const { title, sections } = await generateRevisionSheet(content, format, instructions)
-      const sheet = await createRevisionSheet({ subjectId, chapterIds: [chapterId], format, title, sections })
+      const sheet = await createRevisionSheet({
+        subjectId,
+        chapterIds: overrideChapterIds ?? [chapterId],
+        format,
+        title,
+        sections,
+      })
       onClose()
       navigate(`/fiche/${sheet.id}`)
     } catch (e) {
