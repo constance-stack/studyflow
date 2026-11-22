@@ -75,7 +75,11 @@ Réponds uniquement en JSON strict : {"plan": [{"dayOffset": number, "descriptio
 "dayOffset" est le nombre de jours à partir d'aujourd'hui (0 = aujourd'hui).`
 
 export function revisionPlanUserPrompt(examName: string, daysRemaining: number, chapterNames: string[]) {
-  return `Examen : "${examName}", dans ${daysRemaining} jour(s).\nChapitres à réviser : ${chapterNames.join(', ')}.`
+  const chaptersLine =
+    chapterNames.length > 0
+      ? `Chapitres à réviser : ${chapterNames.join(', ')}.`
+      : "Aucun chapitre précis n'est renseigné — propose un planning générique adapté à cette matière/cet examen (relecture du cours, exercices d'entraînement, auto-évaluation, etc.)."
+  return `Examen : "${examName}", dans ${daysRemaining} jour(s).\n${chaptersLine}`
 }
 
 const SHEET_FORMAT_INSTRUCTIONS: Record<string, string> = {

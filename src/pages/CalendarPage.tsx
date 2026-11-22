@@ -394,7 +394,13 @@ export function CalendarPage() {
         }}
       />
 
-      {planExam && <RevisionPlanSheet open={!!planExam} onClose={() => setPlanExam(null)} exam={planExam} />}
+      {planExam && (
+        <RevisionPlanSheet
+          open={!!planExam}
+          onClose={() => setPlanExam(null)}
+          exam={exams.find((e) => e.id === planExam.id) ?? planExam}
+        />
+      )}
     </div>
   )
 }

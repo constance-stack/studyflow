@@ -9,11 +9,19 @@ import { daysBetween, formatDateShort } from '../lib/dates'
 import { newId } from '../lib/ids'
 import type { Exam, RevisionPlanItem } from '../db/types'
 
+function dateToInputValue(timestamp: number) {
+  const d = new Date(timestamp)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onClose: () => void; exam: Exam }) {
   const chapters = useLiveQuery(() => db.chapters.where('subjectId').equals(exam.subjectId).toArray()) ?? []
   const scopedChapters = exam.chapterIds.length > 0 ? chapters.filter((c) => exam.chapterIds.includes(c.id)) : chapters
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addDescription, setAddDescription] = useState('')
+  const [addDate, setAddDate] = useState(() => dateToInputValue(Date.now()))
 
   async function handleGenerate() {
     setGenerating(true)
@@ -41,17 +49,23 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
     }
   }
 
-  function addManualItem() {
-    const description = window.prompt('Décris cette tâche de révision :')
-    if (!description?.trim()) return
+  function openAddItem() {
+    setAddDescription('')
+    setAddDate(dateToInputValue(Date.now()))
+    setAddOpen(true)
+  }
+
+  function submitAddItem() {
+    if (!addDescription.trim()) return
     const item: RevisionPlanItem = {
       id: newId(),
-      date: Date.now(),
-      description: description.trim(),
+      date: new Date(addDate).getTime(),
+      description: addDescription.trim(),
       chapterIds: [],
       done: false,
     }
     setRevisionPlan(exam.id, [...exam.revisionPlan, item])
+    setAddOpen(false)
   }
 
   const sortedPlan = [...exam.revisionPlan].sort((a, b) => a.date - b.date)
@@ -64,7 +78,7 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
       footer={
         <button
           onClick={handleGenerate}
-          disabled={generating || scopedChapters.length === 0}
+          disabled={generating}
           className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-medium text-white bg-[var(--color-primary)] disabled:opacity-50"
         >
           {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -75,7 +89,8 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
       {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
       {scopedChapters.length === 0 && (
         <p className="text-sm text-[var(--color-text-muted)] mb-3">
-          Associe des chapitres à cet examen pour pouvoir générer un planning.
+          Associe des chapitres à cet examen pour un planning précis par chapitre, ou génère quand même un planning
+          générique.
         </p>
       )}
 
@@ -111,11 +126,49 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
       )}
 
       <button
-        onClick={addManualItem}
+        onClick={openAddItem}
         className="flex items-center gap-1.5 text-sm text-[var(--color-primary)] font-medium"
       >
         <Plus size={15} /> Ajouter une tâche manuellement
       </button>
+
+      <Sheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Nouvelle tâche de révision"
+        footer={
+          <button
+            onClick={submitAddItem}
+            disabled={!addDescription.trim()}
+            className="w-full rounded-xl py-3 font-medium text-white bg-[var(--color-primary)] disabled:opacity-40"
+          >
+            Ajouter
+          </button>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">Tâche</label>
+            <input
+              autoFocus
+              value={addDescription}
+              onChange={(e) => setAddDescription(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitAddItem()}
+              placeholder="Réviser le chapitre 3"
+              className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">Date</label>
+            <input
+              type="date"
+              value={addDate}
+              onChange={(e) => setAddDate(e.target.value)}
+              className="w-full rounded-xl px-3.5 py-2.5 bg-[var(--color-surface-muted)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+          </div>
+        </div>
+      </Sheet>
     </Sheet>
   )
 }
