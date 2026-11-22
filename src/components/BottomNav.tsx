@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Library, Zap, CalendarDays, Menu } from 'lucide-react'
+import { Home, Library, Zap, Bot, CalendarDays, Menu } from 'lucide-react'
 
 const items = [
   { to: '/', label: 'Accueil', icon: Home, end: true },
   { to: '/library', label: 'Cours', icon: Library },
   { to: '/review', label: 'Réviser', icon: Zap },
+  { to: '/assistant', label: 'IA', icon: Bot },
   { to: '/calendar', label: 'Calendrier', icon: CalendarDays },
   { to: '/more', label: 'Plus', icon: Menu },
 ]

@@ -197,11 +197,13 @@ export function GenerateActivitySheet({
         .join('\n\n')
         .slice(0, exhaustive ? 60000 : 20000)
 
-      if (!content.trim()) {
+      // No document content: fall back to the AI's general knowledge, but only if there are
+      // instructions to work from — otherwise there's genuinely nothing to generate from.
+      if (!content.trim() && !instructions.trim()) {
         throw new Error(
           overrideDocIds
-            ? "Aucun des documents sélectionnés n'a de contenu analysé. Analyse-les avec l'IA d'abord."
-            : "Aucun contenu disponible dans ce chapitre. Importe un document et analyse-le avec l'IA, ou ajoute une note, avant de générer une activité.",
+            ? "Aucun des documents sélectionnés n'a de contenu analysé. Analyse-les avec l'IA, ou précise le sujet dans les instructions."
+            : "Aucun contenu disponible dans ce chapitre. Importe un document, ou précise le sujet dans les instructions, avant de générer une activité.",
         )
       }
 
@@ -346,15 +348,16 @@ export function GenerateActivitySheet({
         </button>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">
-            Instructions (facultatif)
-          </label>
+          <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">Instructions</label>
           <textarea
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
-            placeholder='Ex : "concentre-toi sur les formules", "pose des questions de dissertation"...'
+            placeholder='Ex : "concentre-toi sur les formules", "fais un QCM sur le livre [titre]"...'
             className="w-full min-h-[70px] rounded-xl p-3.5 bg-[var(--color-surface-muted)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm resize-none"
           />
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            Pas de document disponible ? Décris le sujet ici — l'IA s'appuiera sur ses connaissances générales.
+          </p>
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}

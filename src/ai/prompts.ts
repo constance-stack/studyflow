@@ -93,7 +93,11 @@ Règles impératives : base-toi uniquement sur le contenu fourni, n'invente aucu
 Réponds uniquement en JSON strict : {"title": string, "sections": [{"heading": string, "body": string}]}`
 
 export function revisionSheetUserPrompt(content: string, format: string, instructions: string) {
-  return `Contenu de cours :\n"""\n${content}\n"""\n\nFormat demandé : ${SHEET_FORMAT_INSTRUCTIONS[format] ?? format}${
+  const formatLine = `Format demandé : ${SHEET_FORMAT_INSTRUCTIONS[format] ?? format}`
+  if (!content.trim()) {
+    return `${NO_CONTENT_OVERRIDE}\n\nCe que l'étudiante demande : "${instructions}"\n\n${formatLine}`
+  }
+  return `Contenu de cours :\n"""\n${content}\n"""\n\n${formatLine}${
     instructions ? `\nInstructions supplémentaires : "${instructions}"` : ''
   }`
 }
@@ -128,6 +132,12 @@ export const EXERCISE_SYSTEM_PROMPT = `Tu crées des exercices (calculs, applica
 Règles impératives : base-toi uniquement sur le contenu fourni. Donne des indices progressifs (du plus léger au plus explicite) et une correction détaillée étape par étape.
 Réponds uniquement en JSON strict : {"exercises": [{"statement": string, "hints": string[], "steps": string[], "finalAnswer": string}]}`
 
+// Shown when there's no document content to ground on — lets the student ask for something
+// built from the AI's general knowledge (e.g. "résume ce livre") instead of refusing outright.
+// This only relaxes the "stick to the provided content" rule when there IS no content at all;
+// whenever real course content is supplied, the system prompt's grounding rule still applies.
+const NO_CONTENT_OVERRIDE = `Aucun contenu de cours n'a été fourni pour cette demande. Dans ce cas précis seulement, ignore la consigne de ne te baser que sur le contenu fourni : base-toi sur tes connaissances générales sur le sujet demandé dans les instructions ci-dessous. Indique dans le contenu généré, quand c'est pertinent, qu'il s'agit de connaissances générales et non du cours de l'étudiante, et reste prudent·e sur les faits très précis (dates exactes, citations mot pour mot) qui pourraient être approximatifs.`
+
 export function activityUserPrompt(opts: {
   content: string
   count: number
@@ -138,6 +148,9 @@ export function activityUserPrompt(opts: {
   const countInstruction = opts.exhaustive
     ? `Extrais ABSOLUMENT TOUS les éléments pertinents présents dans le contenu fourni, sans te limiter à un nombre précis — qu'il y en ait 5 ou 300, n'en omets aucun.`
     : `Génère ${opts.count} élément(s).`
+  if (!opts.content.trim()) {
+    return `${NO_CONTENT_OVERRIDE}\n\nSujet demandé par l'étudiante : "${opts.instructions}"\n\n${countInstruction} Difficulté "${opts.difficulty}".`
+  }
   return `Contenu de cours :\n"""\n${opts.content}\n"""\n\n${countInstruction} Difficulté "${opts.difficulty}".${
     opts.instructions ? ` Instructions supplémentaires de l'étudiante : "${opts.instructions}"` : ''
   }`

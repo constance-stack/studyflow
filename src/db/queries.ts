@@ -274,6 +274,7 @@ export async function createActivity(opts: {
     config: opts.config,
     content: opts.content,
     favorite: false,
+    archived: false,
     createdAt: now(),
     updatedAt: now(),
   }
@@ -287,6 +288,10 @@ export async function deleteActivity(id: string) {
 
 export async function toggleActivityFavorite(id: string, favorite: boolean) {
   await db.activities.update(id, { favorite, updatedAt: now() })
+}
+
+export async function toggleActivityArchived(id: string, archived: boolean) {
+  await db.activities.update(id, { archived, updatedAt: now() })
 }
 
 export async function updateActivityContent(id: string, content: unknown) {

@@ -44,7 +44,7 @@ const TYPE_LABELS: Record<ActivityType, { label: string; icon: React.ReactNode }
 
 export function Review() {
   const navigate = useNavigate()
-  const activities = useLiveQuery(() => db.activities.toArray()) ?? []
+  const activities = useLiveQuery(() => db.activities.toArray().then((a) => a.filter((x) => !x.archived))) ?? []
   const subjects = useLiveQuery(() => db.subjects.orderBy('order').toArray()) ?? []
   const chapters = useLiveQuery(() => db.chapters.toArray()) ?? []
   const activeSession = useLiveQuery(() => loadActiveSession())

@@ -55,7 +55,8 @@ export function Dashboard() {
     }) ?? []
   const chapterCount = useLiveQuery(() => db.chapters.count()) ?? 0
   const documentCount = useLiveQuery(() => db.documents.count()) ?? 0
-  const activityCount = useLiveQuery(() => db.activities.count()) ?? 0
+  const activityCount =
+    useLiveQuery(() => db.activities.toArray().then((a) => a.filter((x) => !x.archived).length)) ?? 0
   const subjectsAll = useLiveQuery(() => db.subjects.toArray()) ?? []
   const upcomingExams =
     useLiveQuery(() =>
@@ -68,7 +69,7 @@ export function Dashboard() {
   function launchQuick(filter: 'due' | 'all', title: string) {
     db.activities.toArray().then((activities) => {
       const config: SessionConfig = {
-        activityIds: activities.map((a) => a.id),
+        activityIds: activities.filter((a) => !a.archived).map((a) => a.id),
         filter,
         untilMastered: false,
         title,

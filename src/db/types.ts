@@ -77,6 +77,9 @@ export interface Activity {
   config: Record<string, unknown>
   content: unknown
   favorite: boolean
+  // Archived activities stay visible in the chapter (and can still be revised on purpose) but
+  // are left out of "À réviser aujourd'hui" / "Révision mixte" and other broad revision pulls.
+  archived: boolean
   createdAt: number
   updatedAt: number
 }

@@ -27,6 +27,9 @@ import {
   FileSpreadsheet,
   Zap,
   Play,
+  Archive,
+  Plus,
+  Loader2,
 } from 'lucide-react'
 import { db } from '../db/schema'
 import {
@@ -34,6 +37,7 @@ import {
   deleteActivity,
   deleteDocument,
   deleteRevisionSheet,
+  toggleActivityArchived,
   toggleActivityFavorite,
   updateChapter,
   updateDocument,
@@ -120,6 +124,7 @@ export function ChapterView() {
   const [importing, setImporting] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
+  const [fabMenuOpen, setFabMenuOpen] = useState(false)
   const [previewActivity, setPreviewActivity] = useState<Activity | null>(null)
   const [activityActionsFor, setActivityActionsFor] = useState<Activity | null>(null)
   const [deleteActivityTarget, setDeleteActivityTarget] = useState<Activity | null>(null)
@@ -236,9 +241,9 @@ export function ChapterView() {
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
             Activités générées
           </p>
-          {activities.length > 0 && (
+          {activities.some((a) => !a.archived) && (
             <button
-              onClick={() => launchRevision(activities, `Réviser — ${chapter.name}`)}
+              onClick={() => launchRevision(activities.filter((a) => !a.archived), `Réviser — ${chapter.name}`)}
               className="flex items-center gap-1 text-xs font-medium text-[var(--color-primary)]"
             >
               <Zap size={13} /> Réviser ce chapitre
@@ -257,7 +262,9 @@ export function ChapterView() {
               <div
                 key={a.id}
                 onClick={() => setPreviewActivity(a)}
-                className="flex items-center gap-3 rounded-2xl bg-[var(--color-surface)] p-3.5 cursor-pointer"
+                className={`flex items-center gap-3 rounded-2xl bg-[var(--color-surface)] p-3.5 cursor-pointer ${
+                  a.archived ? 'opacity-50' : ''
+                }`}
               >
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -267,7 +274,9 @@ export function ChapterView() {
                 </div>
                 <div className="min-w-0 grow">
                   <p className="font-medium truncate">{a.title}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{activityItemCount(a)} élément(s)</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {activityItemCount(a)} élément(s){a.archived ? ' · Archivé' : ''}
+                  </p>
                 </div>
                 {a.favorite && <Star size={16} className="text-yellow-500 fill-yellow-500 shrink-0" />}
                 <button
@@ -346,33 +355,46 @@ export function ChapterView() {
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      <div className="fixed right-5 bottom-24 sm:bottom-8 z-40 flex flex-col gap-2.5 items-end">
-        <button
-          onClick={() => (aiConfig ? setGenerateOpen(true) : navigate('/assistant'))}
-          className="flex items-center gap-2 rounded-full pl-4 pr-5 h-12 bg-[var(--color-surface)] shadow-lg font-medium text-sm active:scale-95"
-        >
-          <Sparkles size={17} /> Générer
-        </button>
-        <button
-          onClick={() => setManualOpen(true)}
-          className="flex items-center gap-2 rounded-full pl-4 pr-5 h-12 bg-[var(--color-surface)] shadow-lg font-medium text-sm active:scale-95"
-        >
-          <PenSquare size={17} /> Créer
-        </button>
-        <button
-          onClick={() => setNoteOpen(true)}
-          className="flex items-center gap-2 rounded-full pl-4 pr-5 h-12 bg-[var(--color-surface)] shadow-lg font-medium text-sm active:scale-95"
-        >
-          <StickyNote size={17} /> Note
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={importing}
-          className="flex items-center gap-2 rounded-full pl-4 pr-5 h-12 bg-[var(--color-primary)] text-white shadow-lg font-medium text-sm active:scale-95 disabled:opacity-60"
-        >
-          <Upload size={18} /> {importing ? 'Import...' : 'Importer'}
-        </button>
-      </div>
+      <button
+        onClick={() => setFabMenuOpen(true)}
+        disabled={importing}
+        className="fixed right-5 bottom-24 sm:bottom-8 z-40 w-14 h-14 rounded-full bg-[var(--color-primary)] text-white shadow-lg flex items-center justify-center active:scale-95 disabled:opacity-60"
+        aria-label="Ajouter"
+      >
+        {importing ? <Loader2 size={22} className="animate-spin" /> : <Plus size={24} />}
+      </button>
+
+      <ActionSheet
+        open={fabMenuOpen}
+        title="Ajouter"
+        onClose={() => setFabMenuOpen(false)}
+        actions={[
+          {
+            key: 'generate',
+            label: 'Générer avec l\'IA',
+            icon: <Sparkles size={18} />,
+            onSelect: () => (aiConfig ? setGenerateOpen(true) : navigate('/assistant')),
+          },
+          {
+            key: 'create',
+            label: 'Créer manuellement',
+            icon: <PenSquare size={18} />,
+            onSelect: () => setManualOpen(true),
+          },
+          {
+            key: 'note',
+            label: 'Nouvelle note',
+            icon: <StickyNote size={18} />,
+            onSelect: () => setNoteOpen(true),
+          },
+          {
+            key: 'import',
+            label: 'Importer un document',
+            icon: <Upload size={18} />,
+            onSelect: () => fileInputRef.current?.click(),
+          },
+        ]}
+      />
 
       <NamePromptSheet
         open={noteOpen}
@@ -480,6 +502,14 @@ export function ChapterView() {
                   label: 'Modifier le contenu',
                   icon: <PenSquare size={18} />,
                   onSelect: () => setEditContentActivity(activityActionsFor),
+                },
+                {
+                  key: 'archive',
+                  label: activityActionsFor.archived
+                    ? 'Désarchiver (inclure dans les révisions)'
+                    : 'Archiver (exclure des révisions aléatoires)',
+                  icon: <Archive size={18} />,
+                  onSelect: () => toggleActivityArchived(activityActionsFor.id, !activityActionsFor.archived),
                 },
                 {
                   key: 'delete',

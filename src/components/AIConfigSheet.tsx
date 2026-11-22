@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldAlert, ListChecks } from 'lucide-react'
+import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldAlert, ListChecks, ExternalLink } from 'lucide-react'
 import { Sheet } from './Sheet'
 import { PROVIDER_PRESETS, type AIConfig, type AIProviderKind, type ModelInfo } from '../ai/types'
 import { buildProvider } from '../ai/client'
@@ -114,6 +114,16 @@ export function AIConfigSheet({
       }
     >
       <div className="space-y-5">
+        {initial && (
+          <div className="rounded-xl bg-green-500/10 px-3.5 py-2.5 flex items-center gap-2 text-sm">
+            <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+            <span>
+              IA actuelle : <strong>{PROVIDER_PRESETS[initial.provider].label.split(' (')[0]}</strong> ·{' '}
+              {initial.model}
+            </span>
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           {(Object.keys(PROVIDER_PRESETS) as AIProviderKind[]).map((p) => (
             <button
@@ -217,9 +227,22 @@ export function AIConfigSheet({
             </button>
           </div>
           {provider === 'gemini' && (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-              Obtiens une clé gratuite sur aistudio.google.com (section "Get API key"), aucune carte bancaire requise.
-            </p>
+            <div className="text-xs text-[var(--color-text-muted)] mt-1.5 space-y-1">
+              <p className="font-medium text-[var(--color-text)]">Pour obtenir une clé gratuite (2 min, sans carte bancaire) :</p>
+              <p>
+                1. Ouvre{' '}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--color-primary)] font-medium inline-flex items-center gap-0.5"
+                >
+                  aistudio.google.com/apikey <ExternalLink size={11} />
+                </a>
+              </p>
+              <p>2. Connecte-toi avec un compte Google, puis clique "Create API key".</p>
+              <p>3. Copie la clé et colle-la ci-dessus.</p>
+            </div>
           )}
         </div>
 

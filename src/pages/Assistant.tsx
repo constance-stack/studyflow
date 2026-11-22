@@ -33,7 +33,7 @@ import { db } from '../db/schema'
 import { createSubject, createFolder, createChapter, createDocument, updateDocument } from '../db/queries'
 import { extractDocumentContent } from '../ai/generate'
 import { documentToImageParts } from '../ai/documentImages'
-import type { ChatMessage } from '../ai/types'
+import { PROVIDER_PRESETS, type ChatMessage } from '../ai/types'
 import type { DocumentType } from '../db/types'
 
 const SCRATCH_SUBJECT_NAME = 'Mes documents'
@@ -253,18 +253,10 @@ export function Assistant() {
   }
 
   async function openGenerate() {
-    if (selectedDocs.length === 0) {
-      setUploadError('Choisis au moins un document (ou ajoutes-en un) avant de générer une activité.')
-      return
-    }
     setGenTarget(await resolveGenerationTarget())
   }
 
   async function openGenerateFiche() {
-    if (selectedDocs.length === 0) {
-      setUploadError('Choisis au moins un document (ou ajoutes-en un) avant de générer une fiche.')
-      return
-    }
     const target = await resolveGenerationTarget()
     setFicheTarget(target)
   }
@@ -305,6 +297,15 @@ export function Assistant() {
       <div className="hidden sm:flex items-center justify-between px-8 pt-8 max-w-2xl mx-auto w-full">
         <h1 className="text-2xl font-bold">Assistant IA</h1>
       </div>
+
+      {config && (
+        <button
+          onClick={() => setConfigOpen(true)}
+          className="px-4 sm:px-8 max-w-2xl mx-auto w-full text-left text-xs text-[var(--color-text-muted)] pt-1"
+        >
+          IA : {PROVIDER_PRESETS[config.provider].label.split(' (')[0]} · {config.model}
+        </button>
+      )}
 
       <div className="px-4 sm:px-8 max-w-2xl mx-auto w-full flex items-center gap-2 py-2">
         <button

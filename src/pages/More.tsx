@@ -4,7 +4,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   GraduationCap,
   BarChart3,
-  Bot,
   Moon,
   Sun,
   Laptop,
@@ -80,7 +79,6 @@ export function More() {
   const links = [
     { to: '/exams', label: 'Examens', icon: GraduationCap },
     { to: '/stats', label: 'Statistiques', icon: BarChart3 },
-    { to: '/assistant', label: 'Assistant IA', icon: Bot },
   ]
 
   return (
