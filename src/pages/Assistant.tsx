@@ -15,10 +15,14 @@ import {
   FileSpreadsheet,
   FolderOpen,
   X,
+  RotateCcw,
+  FilePlus2,
+  Check,
 } from 'lucide-react'
 import { TopBar } from '../components/TopBar'
 import { EmptyState } from '../components/EmptyState'
 import { AIConfigSheet } from '../components/AIConfigSheet'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { GenerateActivitySheet } from '../components/GenerateActivitySheet'
 import { GenerateRevisionSheetSheet } from '../components/GenerateRevisionSheetSheet'
 import { DocumentPickerSheet } from '../components/DocumentPickerSheet'
@@ -33,6 +37,7 @@ import type { ChatMessage } from '../ai/types'
 import type { DocumentType } from '../db/types'
 
 const SCRATCH_SUBJECT_NAME = 'Mes documents'
+const CHAT_HISTORY_KEY = 'assistant_chat_history'
 
 const SUGGESTIONS = [
   'Explique-moi cette notion plus simplement.',
@@ -74,14 +79,55 @@ export function Assistant() {
   const [generatedNotice, setGeneratedNotice] = useState<{ chapterId: string } | null>(null)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const [savedNotice, setSavedNotice] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, sending])
+
+  // Chat history is lost on every navigation/reload otherwise — persist it as a single rolling
+  // conversation (this page has no multi-thread concept) so it survives.
+  useEffect(() => {
+    db.settings.get(CHAT_HISTORY_KEY).then((row) => {
+      if (Array.isArray(row?.value)) setMessages(row.value as ChatMessage[])
+      setHistoryLoaded(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!historyLoaded) return
+    db.settings.put({ key: CHAT_HISTORY_KEY, value: messages })
+  }, [messages, historyLoaded])
+
+  function clearConversation() {
+    setMessages([])
+    setClearConfirm(false)
+  }
+
+  async function saveAsDocument(messageIndex: number, content: string) {
+    const target = selectedDocs.length > 0 ? await resolveGenerationTarget() : await ensureWorkspaceChapter()
+    const precedingQuestion = messages[messageIndex - 1]
+    const name = precedingQuestion?.content
+      ? precedingQuestion.content.slice(0, 60)
+      : `Réponse IA ${new Date().toLocaleDateString('fr-FR')}`
+    const doc = await createDocument({
+      chapterId: target.chapterId,
+      subjectId: target.subjectId,
+      name,
+      type: 'note',
+      mimeType: 'text/plain',
+      textContent: content,
+    })
+    setSelectedDocIds((prev) => [...prev, doc.id])
+    setSavedNotice(messageIndex)
+    setTimeout(() => setSavedNotice(null), 2000)
+  }
 
   async function send(text: string) {
     const content = text.trim()
@@ -270,6 +316,15 @@ export function Assistant() {
             ? 'Choisir des documents'
             : `${selectedDocs.length} document${selectedDocs.length === 1 ? '' : 's'} sélectionné${selectedDocs.length === 1 ? '' : 's'}`}
         </button>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setClearConfirm(true)}
+            className="p-2 rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] shrink-0"
+            aria-label="Nouvelle conversation"
+          >
+            <RotateCcw size={16} />
+          </button>
+        )}
         <button
           onClick={() => setConfigOpen(true)}
           className="p-2 rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] shrink-0"
@@ -356,21 +411,40 @@ export function Assistant() {
         ) : (
           <div className="flex flex-col gap-3 py-4">
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-2.5 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                    m.role === 'user' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface-muted)]'
-                  }`}
-                >
-                  {m.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+              <div key={i} className={`flex flex-col gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`flex gap-2.5 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      m.role === 'user' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface-muted)]'
+                    }`}
+                  >
+                    {m.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+                  </div>
+                  <div
+                    className={`rounded-2xl px-3.5 py-2.5 text-sm max-w-[80%] whitespace-pre-wrap ${
+                      m.role === 'user' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface)]'
+                    }`}
+                  >
+                    {m.content}
+                  </div>
                 </div>
-                <div
-                  className={`rounded-2xl px-3.5 py-2.5 text-sm max-w-[80%] whitespace-pre-wrap ${
-                    m.role === 'user' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface)]'
-                  }`}
-                >
-                  {m.content}
-                </div>
+                {m.role === 'assistant' && (
+                  <button
+                    onClick={() => saveAsDocument(i, m.content)}
+                    disabled={savedNotice === i}
+                    className="ml-9 flex items-center gap-1 text-xs text-[var(--color-text-muted)] px-1"
+                  >
+                    {savedNotice === i ? (
+                      <>
+                        <Check size={12} className="text-green-500" /> Enregistré comme document
+                      </>
+                    ) : (
+                      <>
+                        <FilePlus2 size={12} /> Enregistrer comme document
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             ))}
             {sending && (
@@ -459,6 +533,16 @@ export function Assistant() {
         onClose={() => setPickerOpen(false)}
         initialSelected={selectedDocIds}
         onConfirm={setSelectedDocIds}
+      />
+
+      <ConfirmDialog
+        open={clearConfirm}
+        title="Nouvelle conversation ?"
+        description="L'historique de cette conversation sera effacé (les documents et activités déjà créés restent intacts)."
+        confirmLabel="Effacer"
+        danger
+        onCancel={() => setClearConfirm(false)}
+        onConfirm={clearConversation}
       />
     </div>
   )
