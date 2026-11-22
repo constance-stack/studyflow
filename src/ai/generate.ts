@@ -237,11 +237,13 @@ export async function generateRevisionPlan(
   examName: string,
   daysRemaining: number,
   chapterNames: string[],
+  content = '',
+  instructions = '',
 ): Promise<RevisionPlanSuggestion[]> {
   const provider = await requireProvider()
   const result = await provider.generateJSON({
     systemPrompt: REVISION_PLAN_SYSTEM_PROMPT,
-    userPrompt: revisionPlanUserPrompt(examName, daysRemaining, chapterNames),
+    userPrompt: revisionPlanUserPrompt(examName, daysRemaining, chapterNames, content, instructions),
   })
   const plan = (result as { plan?: unknown }).plan
   if (!Array.isArray(plan)) throw new Error("Format de réponse inattendu de l'IA.")

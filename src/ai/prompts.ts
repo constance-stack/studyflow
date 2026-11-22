@@ -69,17 +69,27 @@ export function gradeExamOpenPrompt(question: string, expectedAnswer: string, us
   return `Question (notée sur ${maxPoints} points) : "${question}"\nRéponse attendue : "${expectedAnswer}"\nRéponse de l'étudiante : "${userAnswer || '(laissée vide)'}"\n\nDonne une note sur ${maxPoints} et une courte justification.`
 }
 
-export const REVISION_PLAN_SYSTEM_PROMPT = `Tu proposes un planning de révision pour une étudiante avant un examen, à partir de la liste de chapitres concernés et du nombre de jours restants.
-Répartis les chapitres sur les jours disponibles de façon réaliste (pas tout le dernier jour), en laissant si possible le dernier jour pour une révision légère/relecture.
+export const REVISION_PLAN_SYSTEM_PROMPT = `Tu proposes un planning de révision pour une étudiante avant un examen, à partir des chapitres concernés, du nombre de jours restants, et si disponible du contenu réel de ses cours et de ses propres contraintes.
+Répartis les chapitres/notions sur les jours disponibles de façon réaliste et concrète (pas tout le dernier jour), en t'appuyant sur le contenu fourni pour proposer des tâches précises (ex. "revoir les formules de dérivation", pas juste "réviser le chapitre") plutôt que génériques. Laisse si possible le dernier jour pour une révision légère/relecture. Respecte les contraintes données par l'étudiante (temps disponible, jours à éviter, etc.) si elle en a indiqué.
 Réponds uniquement en JSON strict : {"plan": [{"dayOffset": number, "description": string, "chapterNames": string[]}]}
 "dayOffset" est le nombre de jours à partir d'aujourd'hui (0 = aujourd'hui).`
 
-export function revisionPlanUserPrompt(examName: string, daysRemaining: number, chapterNames: string[]) {
+export function revisionPlanUserPrompt(
+  examName: string,
+  daysRemaining: number,
+  chapterNames: string[],
+  content: string,
+  instructions: string,
+) {
   const chaptersLine =
     chapterNames.length > 0
       ? `Chapitres à réviser : ${chapterNames.join(', ')}.`
       : "Aucun chapitre précis n'est renseigné — propose un planning générique adapté à cette matière/cet examen (relecture du cours, exercices d'entraînement, auto-évaluation, etc.)."
-  return `Examen : "${examName}", dans ${daysRemaining} jour(s).\n${chaptersLine}`
+  const contentBlock = content.trim() ? `\n\nContenu de cours disponible :\n"""\n${content}\n"""` : ''
+  const instructionsLine = instructions.trim()
+    ? `\nContraintes/préférences de l'étudiante : "${instructions.trim()}"`
+    : ''
+  return `Examen : "${examName}", dans ${daysRemaining} jour(s).\n${chaptersLine}${instructionsLine}${contentBlock}`
 }
 
 const SHEET_FORMAT_INSTRUCTIONS: Record<string, string> = {

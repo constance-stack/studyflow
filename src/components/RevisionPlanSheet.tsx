@@ -19,6 +19,7 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
   const scopedChapters = exam.chapterIds.length > 0 ? chapters.filter((c) => exam.chapterIds.includes(c.id)) : chapters
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [instructions, setInstructions] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [addDescription, setAddDescription] = useState('')
   const [addDate, setAddDate] = useState(() => dateToInputValue(Date.now()))
@@ -28,10 +29,21 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
     setError(null)
     try {
       const daysRemaining = Math.max(0, daysBetween(Date.now(), exam.date))
+      const docs =
+        scopedChapters.length > 0
+          ? await db.documents.where('chapterId').anyOf(scopedChapters.map((c) => c.id)).toArray()
+          : []
+      const content = docs
+        .map((d) => d.textContent || d.extractedText || '')
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, 20000)
       const suggestions = await generateRevisionPlan(
         exam.name,
         daysRemaining,
         scopedChapters.map((c) => c.name),
+        content,
+        instructions,
       )
       if (suggestions.length === 0) throw new Error("L'IA n'a proposé aucun planning.")
       const items: RevisionPlanItem[] = suggestions.map((s) => ({
@@ -93,6 +105,22 @@ export function RevisionPlanSheet({ open, onClose, exam }: { open: boolean; onCl
           générique.
         </p>
       )}
+
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1.5 text-[var(--color-text-muted)]">
+          Contraintes / préférences (facultatif)
+        </label>
+        <textarea
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder='Ex : "30 min par jour max", "rien le week-end", "insiste sur les exercices"...'
+          className="w-full min-h-[60px] rounded-xl p-3 bg-[var(--color-surface-muted)] text-sm outline-none resize-none"
+        />
+        <p className="text-xs text-[var(--color-text-muted)] mt-1">
+          L'IA s'appuie aussi sur le contenu analysé des documents liés à ces chapitres pour proposer des tâches
+          précises, pas seulement les noms de chapitres.
+        </p>
+      </div>
 
       {sortedPlan.length === 0 ? (
         <p className="text-sm text-[var(--color-text-muted)] py-6 text-center">Aucun planning pour l'instant.</p>
