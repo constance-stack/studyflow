@@ -14,9 +14,14 @@ import {
   ArrowUp,
   ArrowDown,
   Settings2,
+  Archive,
+  ArchiveRestore,
+  Palette,
 } from 'lucide-react'
 import { db } from '../db/schema'
 import {
+  archiveChapter,
+  archiveFolder,
   createChapter,
   createFolder,
   deleteChapter,
@@ -36,22 +41,24 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FolderPickerSheet } from '../components/FolderPickerSheet'
 import { EmptyState } from '../components/EmptyState'
 import { SubjectFormSheet } from '../components/SubjectFormSheet'
+import { ColorPickerSheet } from '../components/ColorPickerSheet'
 import type { Chapter, Folder } from '../db/types'
 
 export function SubjectExplorer() {
   const { subjectId, folderId } = useParams<{ subjectId: string; folderId?: string }>()
   const navigate = useNavigate()
   const subject = useLiveQuery(() => db.subjects.get(subjectId!), [subjectId])
+  const [showArchived, setShowArchived] = useState(false)
   const subfolders =
     useLiveQuery(
       () => db.folders.where('subjectId').equals(subjectId!).sortBy('order'),
       [subjectId],
-    )?.filter((f) => f.parentFolderId === (folderId ?? null)) ?? []
+    )?.filter((f) => f.parentFolderId === (folderId ?? null) && f.archived === showArchived) ?? []
   const chapters: Chapter[] =
-    useLiveQuery(
+    (useLiveQuery(
       () => (folderId ? db.chapters.where('folderId').equals(folderId).sortBy('order') : Promise.resolve<Chapter[]>([])),
       [folderId],
-    ) ?? []
+    ) ?? []).filter((c) => c.archived === showArchived)
   const [breadcrumb, setBreadcrumb] = useState<Folder[]>([])
 
   useEffect(() => {
@@ -64,9 +71,11 @@ export function SubjectExplorer() {
   const [folderActionsFor, setFolderActionsFor] = useState<Folder | null>(null)
   const [renameFolderTarget, setRenameFolderTarget] = useState<Folder | null>(null)
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<Folder | null>(null)
+  const [colorFolderTarget, setColorFolderTarget] = useState<Folder | null>(null)
   const [chapterActionsFor, setChapterActionsFor] = useState<Chapter | null>(null)
   const [renameChapterTarget, setRenameChapterTarget] = useState<Chapter | null>(null)
   const [deleteChapterTarget, setDeleteChapterTarget] = useState<Chapter | null>(null)
+  const [colorChapterTarget, setColorChapterTarget] = useState<Chapter | null>(null)
   const [moveChapterTarget, setMoveChapterTarget] = useState<Chapter | null>(null)
 
   if (!subject) return null
@@ -116,12 +125,33 @@ export function SubjectExplorer() {
           ))}
         </div>
 
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setShowArchived(false)}
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium ${
+              !showArchived ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface-muted)]'
+            }`}
+          >
+            Actifs
+          </button>
+          <button
+            onClick={() => setShowArchived(true)}
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium ${
+              showArchived ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface-muted)]'
+            }`}
+          >
+            Archivés
+          </button>
+        </div>
+
         {subfolders.length === 0 && chapters.length === 0 ? (
           <EmptyState
             icon={<FolderIcon size={32} />}
-            title="Vide pour l'instant"
+            title={showArchived ? 'Rien d\'archivé ici' : 'Vide pour l\'instant'}
             description={
-              folderId
+              showArchived
+                ? undefined
+                : folderId
                 ? 'Ajoute un sous-dossier ou un chapitre.'
                 : 'Commence par créer un dossier (ex : Analyse, Grammaire...).'
             }
@@ -134,7 +164,12 @@ export function SubjectExplorer() {
                 onClick={() => navigate(`/library/${subjectId}/folder/${f.id}`)}
                 className="flex items-center gap-3 rounded-2xl bg-[var(--color-surface)] p-3.5 cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] shrink-0">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    f.color ? '' : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]'
+                  }`}
+                  style={f.color ? { backgroundColor: f.color + '26', color: f.color } : undefined}
+                >
                   <FolderIcon size={18} />
                 </div>
                 <p className="font-medium grow truncate">{f.name}</p>
@@ -157,7 +192,7 @@ export function SubjectExplorer() {
               >
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: subject.color + '26', color: subject.color }}
+                  style={{ backgroundColor: (c.color ?? subject.color) + '26', color: c.color ?? subject.color }}
                 >
                   <BookOpen size={17} />
                 </div>
@@ -245,6 +280,18 @@ export function SubjectExplorer() {
                   onSelect: () => setRenameFolderTarget(folderActionsFor),
                 },
                 {
+                  key: 'color',
+                  label: 'Couleur',
+                  icon: <Palette size={18} />,
+                  onSelect: () => setColorFolderTarget(folderActionsFor),
+                },
+                {
+                  key: 'archive',
+                  label: folderActionsFor.archived ? 'Désarchiver' : 'Archiver (dossier + contenu)',
+                  icon: folderActionsFor.archived ? <ArchiveRestore size={18} /> : <Archive size={18} />,
+                  onSelect: () => archiveFolder(folderActionsFor.id, !folderActionsFor.archived),
+                },
+                {
                   key: 'delete',
                   label: 'Supprimer',
                   icon: <Trash2 size={18} />,
@@ -303,6 +350,18 @@ export function SubjectExplorer() {
                   onSelect: () => setMoveChapterTarget(chapterActionsFor),
                 },
                 {
+                  key: 'color',
+                  label: 'Couleur',
+                  icon: <Palette size={18} />,
+                  onSelect: () => setColorChapterTarget(chapterActionsFor),
+                },
+                {
+                  key: 'archive',
+                  label: chapterActionsFor.archived ? 'Désarchiver' : 'Archiver (exclure des révisions)',
+                  icon: chapterActionsFor.archived ? <ArchiveRestore size={18} /> : <Archive size={18} />,
+                  onSelect: () => archiveChapter(chapterActionsFor.id, !chapterActionsFor.archived),
+                },
+                {
                   key: 'delete',
                   label: 'Supprimer',
                   icon: <Trash2 size={18} />,
@@ -342,6 +401,23 @@ export function SubjectExplorer() {
           if (deleteChapterTarget) deleteChapter(deleteChapterTarget.id)
           setDeleteChapterTarget(null)
         }}
+      />
+
+      <ColorPickerSheet
+        open={!!colorFolderTarget}
+        onClose={() => setColorFolderTarget(null)}
+        title="Couleur du dossier"
+        value={colorFolderTarget?.color}
+        defaultLabel="Par défaut"
+        onChange={(color) => colorFolderTarget && updateFolder(colorFolderTarget.id, { color })}
+      />
+      <ColorPickerSheet
+        open={!!colorChapterTarget}
+        onClose={() => setColorChapterTarget(null)}
+        title="Couleur du chapitre"
+        value={colorChapterTarget?.color}
+        defaultLabel={`Couleur de la matière (${subject.name})`}
+        onChange={(color) => colorChapterTarget && updateChapter(colorChapterTarget.id, { color })}
       />
     </div>
   )

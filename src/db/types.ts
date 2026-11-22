@@ -18,6 +18,8 @@ export interface Folder {
   name: string
   order: number
   archived: boolean
+  // Absent/null means "use the default folder color" rather than the subject's color.
+  color?: string | null
   createdAt: number
   updatedAt: number
 }
@@ -29,6 +31,8 @@ export interface Chapter {
   name: string
   order: number
   archived: boolean
+  // Absent/null means "inherit the subject's color".
+  color?: string | null
   createdAt: number
   updatedAt: number
 }

@@ -127,6 +127,18 @@ export async function updateFolder(id: string, patch: Partial<Folder>) {
   await db.folders.update(id, { ...patch, updatedAt: now() })
 }
 
+// Archiving a folder cascades to its subfolders and chapters, so an archived chapter's
+// activities are excluded from revision without having to walk the folder tree at review time.
+export async function archiveFolder(id: string, archived: boolean) {
+  const chapters = await db.chapters.where('folderId').equals(id).toArray()
+  const childFolders = await db.folders.where('parentFolderId').equals(id).toArray()
+  await db.transaction('rw', db.folders, db.chapters, async () => {
+    for (const child of childFolders) await archiveFolder(child.id, archived)
+    for (const chapter of chapters) await db.chapters.update(chapter.id, { archived, updatedAt: now() })
+    await db.folders.update(id, { archived, updatedAt: now() })
+  })
+}
+
 export async function deleteFolder(id: string) {
   const chapters = await db.chapters.where('folderId').equals(id).toArray()
   const childFolders = await db.folders.where('parentFolderId').equals(id).toArray()
@@ -157,6 +169,10 @@ export async function createChapter(subjectId: string, folderId: string, name: s
 
 export async function updateChapter(id: string, patch: Partial<Chapter>) {
   await db.chapters.update(id, { ...patch, updatedAt: now() })
+}
+
+export async function archiveChapter(id: string, archived: boolean) {
+  await db.chapters.update(id, { archived, updatedAt: now() })
 }
 
 export async function moveChapter(id: string, targetFolderId: string) {

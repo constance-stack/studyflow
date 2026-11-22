@@ -55,8 +55,15 @@ export function Dashboard() {
     }) ?? []
   const chapterCount = useLiveQuery(() => db.chapters.count()) ?? 0
   const documentCount = useLiveQuery(() => db.documents.count()) ?? 0
+  const archivedChapterIds =
+    useLiveQuery(() => db.chapters.toArray().then((cs) => new Set(cs.filter((c) => c.archived).map((c) => c.id)))) ??
+    new Set<string>()
   const activityCount =
-    useLiveQuery(() => db.activities.toArray().then((a) => a.filter((x) => !x.archived).length)) ?? 0
+    useLiveQuery(() =>
+      db.activities
+        .toArray()
+        .then((a) => a.filter((x) => !x.archived && !x.chapterIds.some((id) => archivedChapterIds.has(id))).length),
+    ) ?? 0
   const subjectsAll = useLiveQuery(() => db.subjects.toArray()) ?? []
   const upcomingExams =
     useLiveQuery(() =>
@@ -66,10 +73,14 @@ export function Dashboard() {
         .sortBy('date'),
     ) ?? []
 
+  // Archiving a chapter (or its parent folder) excludes its activities from revision the same
+  // way archiving the activity itself does.
   function launchQuick(filter: 'due' | 'all', title: string) {
     db.activities.toArray().then((activities) => {
       const config: SessionConfig = {
-        activityIds: activities.filter((a) => !a.archived).map((a) => a.id),
+        activityIds: activities
+          .filter((a) => !a.archived && !a.chapterIds.some((id) => archivedChapterIds.has(id)))
+          .map((a) => a.id),
         filter,
         untilMastered: false,
         title,

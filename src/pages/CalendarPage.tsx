@@ -12,9 +12,10 @@ import {
   Trash2,
   ListTodo,
   GraduationCap,
+  Check,
 } from 'lucide-react'
 import { db } from '../db/schema'
-import { createExam, deleteExam, updateExam } from '../db/queries'
+import { createExam, deleteExam, toggleRevisionPlanItem, updateExam } from '../db/queries'
 import { TopBar } from '../components/TopBar'
 import { SubjectIcon } from '../lib/iconMap'
 import { EmptyState } from '../components/EmptyState'
@@ -22,8 +23,51 @@ import { ActionSheet } from '../components/ActionSheet'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ExamFormSheet, type ExamFormValues } from '../components/ExamFormSheet'
 import { RevisionPlanSheet } from '../components/RevisionPlanSheet'
-import { countdownLabel, formatDateLong, formatTime, startOfDay } from '../lib/dates'
-import type { Exam } from '../db/types'
+import { countdownLabel, formatDateLong, formatDateShort, formatTime, startOfDay } from '../lib/dates'
+import type { Exam, RevisionPlanItem } from '../db/types'
+
+interface PlanTask {
+  examId: string
+  examName: string
+  subjectId: string
+  item: RevisionPlanItem
+}
+
+function PlanTaskRow({
+  task,
+  subject,
+  onOpen,
+  onToggle,
+}: {
+  task: PlanTask
+  subject: { name: string; color: string; icon: string } | undefined
+  onOpen: () => void
+  onToggle: () => void
+}) {
+  const overdue = task.item.date < startOfDay(Date.now()) && !task.item.done
+  return (
+    <div className="w-full flex items-center gap-3 rounded-2xl bg-[var(--color-surface)] p-3.5 text-left">
+      <button
+        onClick={onToggle}
+        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+          task.item.done ? 'bg-green-500 text-white' : 'border-2 border-[var(--color-text-muted)]'
+        }`}
+        aria-label={task.item.done ? 'Marquer non fait' : 'Marquer fait'}
+      >
+        {task.item.done && <Check size={14} />}
+      </button>
+      <button onClick={onOpen} className="min-w-0 grow text-left">
+        <p className={`text-sm font-medium truncate ${task.item.done ? 'line-through text-[var(--color-text-muted)]' : ''}`}>
+          {task.item.description}
+        </p>
+        <p className={`text-xs truncate ${overdue ? 'text-red-500' : 'text-[var(--color-text-muted)]'}`}>
+          {subject?.name ?? task.examName} · {formatDateShort(task.item.date)}
+          {overdue ? ' · en retard' : ''}
+        </p>
+      </button>
+    </div>
+  )
+}
 
 const IMPORTANCE_DOT: Record<Exam['importance'], string> = {
   low: 'bg-[var(--color-text-muted)]',
@@ -59,6 +103,17 @@ export function CalendarPage() {
   const exams = useLiveQuery(() => db.exams.orderBy('date').toArray()) ?? []
   const subjects = useLiveQuery(() => db.subjects.toArray()) ?? []
   const subjectMap = useMemo(() => new Map(subjects.map((s) => [s.id, s])), [subjects])
+
+  const planTasks = useMemo(() => {
+    const tasks: PlanTask[] = []
+    for (const e of exams) {
+      for (const item of e.revisionPlan) {
+        tasks.push({ examId: e.id, examName: e.name, subjectId: e.subjectId, item })
+      }
+    }
+    return tasks.sort((a, b) => a.item.date - b.item.date)
+  }, [exams])
+  const pendingTasks = planTasks.filter((t) => !t.item.done)
 
   const [view, setView] = useState<'agenda' | 'month'>('agenda')
   const [monthCursor, setMonthCursor] = useState(() => startOfDay(Date.now()))
@@ -100,6 +155,20 @@ export function CalendarPage() {
     }
     return map
   }, [exams])
+
+  const tasksByDay = useMemo(() => {
+    const map = new Map<number, PlanTask[]>()
+    for (const t of planTasks) {
+      const key = startOfDay(t.item.date)
+      map.set(key, [...(map.get(key) ?? []), t])
+    }
+    return map
+  }, [planTasks])
+
+  function openTask(task: PlanTask) {
+    const exam = exams.find((e) => e.id === task.examId)
+    if (exam) setPlanExam(exam)
+  }
 
   function handleSubmitForm(values: ExamFormValues) {
     if (editing) updateExam(editing.id, values)
@@ -169,22 +238,48 @@ export function CalendarPage() {
             <div className="grid grid-cols-7 gap-1">
               {monthDays.map((cell, i) => {
                 const dayExams = examsByDay.get(startOfDay(cell.date)) ?? []
+                const dayTasks = tasksByDay.get(startOfDay(cell.date)) ?? []
                 const isToday = startOfDay(cell.date) === startOfDay(Date.now())
                 return (
                   <button
                     key={i}
-                    onClick={() => dayExams[0] && setDetailExam(dayExams[0])}
+                    onClick={() => {
+                      if (dayExams[0]) setDetailExam(dayExams[0])
+                      else if (dayTasks[0]) openTask(dayTasks[0])
+                    }}
                     className={`aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 text-xs ${
                       cell.inMonth ? '' : 'opacity-30'
                     } ${isToday ? 'bg-[var(--color-primary)]/15 font-bold' : ''}`}
                   >
                     {new Date(cell.date).getDate()}
-                    {dayExams.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />}
+                    <span className="flex gap-0.5 h-1.5">
+                      {dayExams.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />}
+                      {dayTasks.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
+                    </span>
                   </button>
                 )
               })}
             </div>
           </div>
+        )}
+
+        {view === 'agenda' && pendingTasks.length > 0 && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+              Planning de révision
+            </p>
+            <div className="flex flex-col gap-2 mb-6">
+              {pendingTasks.map((t) => (
+                <PlanTaskRow
+                  key={t.item.id}
+                  task={t}
+                  subject={subjectMap.get(t.subjectId)}
+                  onOpen={() => openTask(t)}
+                  onToggle={() => toggleRevisionPlanItem(t.examId, t.item.id, !t.item.done)}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {exams.length === 0 ? (

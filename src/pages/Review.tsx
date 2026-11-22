@@ -44,9 +44,20 @@ const TYPE_LABELS: Record<ActivityType, { label: string; icon: React.ReactNode }
 
 export function Review() {
   const navigate = useNavigate()
-  const activities = useLiveQuery(() => db.activities.toArray().then((a) => a.filter((x) => !x.archived))) ?? []
+  const allActivities = useLiveQuery(() => db.activities.toArray()) ?? []
   const subjects = useLiveQuery(() => db.subjects.orderBy('order').toArray()) ?? []
-  const chapters = useLiveQuery(() => db.chapters.toArray()) ?? []
+  const allChapters = useLiveQuery(() => db.chapters.toArray()) ?? []
+  const chapters = useMemo(() => allChapters.filter((c) => !c.archived), [allChapters])
+  const archivedChapterIds = useMemo(
+    () => new Set(allChapters.filter((c) => c.archived).map((c) => c.id)),
+    [allChapters],
+  )
+  // Archiving a chapter (or its parent folder) excludes its activities from revision the same
+  // way archiving the activity itself does.
+  const activities = useMemo(
+    () => allActivities.filter((a) => !a.archived && !a.chapterIds.some((id) => archivedChapterIds.has(id))),
+    [allActivities, archivedChapterIds],
+  )
   const activeSession = useLiveQuery(() => loadActiveSession())
 
   const [subjectId, setSubjectId] = useState('all')
